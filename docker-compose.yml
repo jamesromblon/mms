@@ -1,0 +1,21 @@
+services:
+  db:
+    image: postgres:14
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: argo_marketplace
+      POSTGRES_USER: marketplace
+      POSTGRES_PASSWORD: marketplace
+    ports:
+      - "5432:5432"
+    volumes:
+      - marketplace_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U marketplace -d argo_marketplace"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  marketplace_pgdata:
+

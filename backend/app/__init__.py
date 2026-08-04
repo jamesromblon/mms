@@ -1,0 +1,2 @@
+"""ARGO Marketplace API application."""
+

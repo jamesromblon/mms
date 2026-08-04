@@ -1,0 +1,47 @@
+stages:
+  - validate
+  - test
+  - build
+
+frontend:validate:
+  image: node:22.20-bookworm
+  stage: validate
+  script:
+    - cd frontend
+    - npm ci
+    - npm run lint
+
+frontend:test:
+  image: node:22.20-bookworm
+  stage: test
+  script:
+    - cd frontend
+    - npm ci
+    - npm run test -- --run
+
+frontend:build:
+  image: node:22.20-bookworm
+  stage: build
+  script:
+    - cd frontend
+    - npm ci
+    - npm run build
+
+backend:test:
+  image: python:3.11.9-bookworm
+  stage: test
+  services:
+    - name: postgres:14
+      alias: postgres
+  variables:
+    POSTGRES_DB: argo_marketplace_test
+    POSTGRES_USER: marketplace
+    POSTGRES_PASSWORD: marketplace
+    DATABASE_URL: postgresql+psycopg2://marketplace:marketplace@postgres:5432/argo_marketplace_test
+  script:
+    - cd backend
+    - pip install -e ".[dev]"
+    - pytest -q
+    - ruff check .
+    - mypy app
+

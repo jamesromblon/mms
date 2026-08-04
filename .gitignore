@@ -1,0 +1,17 @@
+node_modules/
+frontend/dist/
+frontend/coverage/
+.codex-remote-attachments/
+backend/.venv/
+backend/__pycache__/
+backend/.pytest_cache/
+backend/.mypy_cache/
+backend/.ruff_cache/
+*.egg-info/
+*.py[cod]
+.env
+.env.*
+!.env.example
+*.log
+.idea/
+.vscode/
