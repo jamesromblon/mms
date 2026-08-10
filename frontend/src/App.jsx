@@ -1,4 +1,5 @@
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   NavLink,
   Navigate,
@@ -23,7 +24,6 @@ import {
   YAxis,
 } from "recharts";
 import {
-  applications,
   categories,
   dashboardData,
   demoIdentity,
@@ -36,10 +36,16 @@ import {
   reviews,
   sellers,
 } from "./data";
-import { useMarketplaceList } from "./api";
+import { mutateMarketplace, useMarketplaceDashboard, useMarketplaceList } from "./api";
 
 const cn = (...inputs) => twMerge(clsx(inputs));
 const icon = (name) => `bi ${name}`;
+const formatCurrency = (value) => typeof value === "string" && value.startsWith("₱") ? value : `₱${Number(value || 0).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const formatDate = (value) => {
+  if (!value || value === "Today") return value || "—";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" });
+};
 
 function Icon({ name, className = "" }) {
   return <i aria-hidden="true" className={cn(icon(name), className)} />;
@@ -663,9 +669,11 @@ function exportCsv(filename, headers, rows) {
 }
 
 function Dashboard({ onToast }) {
+  const { data: liveDashboard } = useMarketplaceDashboard();
+  const dashboard = liveDashboard || { metrics: [], orderStatus: [], topSellers: [], sellerHighlights: [], sellerMetrics: [], trends: { "Last 7 days": [], "Last 30 days": [], "Last 90 days": [] } };
   const [period, setPeriod] = useState("Last 30 days");
   const [tab, setTab] = useState("Overview");
-  const trend = dashboardData.trends[period];
+  const trend = dashboard.trends[period] || [];
   return (
     <>
       <PageHeader
@@ -691,7 +699,7 @@ function Dashboard({ onToast }) {
       {tab === "Overview" ? (
         <>
           <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            {dashboardData.metrics.map((metric) => (
+            {dashboard.metrics.map((metric) => (
               <MetricCard key={metric.label} {...metric} />
             ))}
           </div>
@@ -768,13 +776,13 @@ function Dashboard({ onToast }) {
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
                       <Pie
-                        data={dashboardData.orderStatus}
+                        data={dashboard.orderStatus}
                         dataKey="value"
                         nameKey="name"
                         innerRadius={0}
                         outerRadius={58}
                       >
-                        {dashboardData.orderStatus.map((entry) => (
+                        {dashboard.orderStatus.map((entry) => (
                           <Cell key={entry.name} fill={entry.color} />
                         ))}
                       </Pie>
@@ -783,7 +791,7 @@ function Dashboard({ onToast }) {
                   </ResponsiveContainer>
                 </div>
                 <div className="space-y-3 text-xs">
-                  {dashboardData.orderStatus.map((item) => (
+                  {dashboard.orderStatus.map((item) => (
                     <div key={item.name} className="flex items-center gap-2">
                       <span
                         className="h-2 w-2 rounded-full"
@@ -805,7 +813,7 @@ function Dashboard({ onToast }) {
               Completed order items, {period.toLowerCase()}
             </p>
             <div className="mt-4 space-y-3">
-              {dashboardData.topSellers.map(([name, amount, width]) => (
+              {dashboard.topSellers.map(([name, amount, width]) => (
                 <div key={name} className="flex items-center gap-3 text-xs">
                   <span className="w-28 truncate text-slate-600 sm:w-36">
                     {name}
@@ -824,7 +832,7 @@ function Dashboard({ onToast }) {
             </div>
           </div>
           <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            {dashboardData.sellerHighlights.map(({ value, label, icon, tone }) => (
+            {dashboard.sellerHighlights.map(({ value, label, icon, tone }) => (
               <MetricCard
                 key={label}
                 value={value}
@@ -836,13 +844,13 @@ function Dashboard({ onToast }) {
           </div>
         </>
       ) : (
-        <SellerPerformance onToast={onToast} />
+        <SellerPerformance onToast={onToast} dashboard={dashboard} />
       )}
     </>
   );
 }
 
-function SellerPerformance({ onToast }) {
+function SellerPerformance({ onToast, dashboard }) {
   return (
     <div className="card mt-4 overflow-hidden">
       <div className="border-b border-slate-100 px-4 py-4">
@@ -852,7 +860,7 @@ function SellerPerformance({ onToast }) {
         </p>
       </div>
       <div className="grid gap-3 p-4 sm:grid-cols-3">
-        {dashboardData.sellerMetrics.map((metric) => <MetricCard key={metric.label} {...metric} />)}
+        {dashboard.sellerMetrics.map((metric) => <MetricCard key={metric.label} {...metric} />)}
       </div>
       <div className="overflow-x-auto">
         <div className="grid min-w-[650px] grid-cols-[1.5fr_1fr_0.8fr_0.8fr_0.7fr]">
@@ -863,7 +871,7 @@ function SellerPerformance({ onToast }) {
               </div>
             ),
           )}
-          {dashboardData.topSellers.map(([name, amount, width]) => (
+          {dashboard.topSellers.map(([name, amount, width]) => (
             <Fragment key={name}>
               <div className="px-4 py-3 text-xs font-semibold text-slate-700">
                 {name}
@@ -892,8 +900,9 @@ function SellerPerformance({ onToast }) {
 }
 
 function ProductsPage({ onToast }) {
-  const { items: sourceItems } = useMarketplaceList("products", products);
+  const { items: sourceItems } = useMarketplaceList("products", products, {}, (item) => ({ ...item, resourceId: item.id, price: formatCurrency(item.price), updated: formatDate(item.updated) }));
   const [items, setItems] = useState(sourceItems);
+  useEffect(() => setItems(sourceItems), [sourceItems]);
   const [tab, setTab] = useState("All Products");
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("All Statuses");
@@ -902,6 +911,7 @@ function ProductsPage({ onToast }) {
   const [modal, setModal] = useState(null);
   const [details, setDetails] = useState(null);
   const [menuId, setMenuId] = useState(null);
+  const queryClient = useQueryClient();
   const filtered = useMemo(
     () =>
       items.filter(
@@ -920,10 +930,13 @@ function ProductsPage({ onToast }) {
       ),
     [items, query, tab, statusFilter, categoryFilter],
   );
-  const categoryMax = Math.max(
-    ...dashboardData.productCategoryMix.map((item) => item.value),
-    1,
-  );
+  const productCategoryMix = useMemo(() => {
+    const colors = ["bg-blue-600", "bg-emerald-600", "bg-amber-600", "bg-violet-500", "bg-rose-600", "bg-slate-500"];
+    return Object.entries(items.reduce((counts, item) => ({ ...counts, [item.category]: (counts[item.category] || 0) + 1 }), {}))
+      .map(([label, value], index) => ({ label, value, color: colors[index % colors.length] }))
+      .sort((left, right) => right.value - left.value);
+  }, [items]);
+  const categoryMax = Math.max(...productCategoryMix.map((item) => item.value), 1);
   const createProduct = (name) => {
     const newItem = {
       id: `prd-${Date.now()}`,
@@ -940,6 +953,14 @@ function ProductsPage({ onToast }) {
     setModal(null);
     onToast(`Product “${name}” created for review`);
   };
+  const persistCreateProduct = async (name) => {
+    try {
+      await mutateMarketplace("post", "/products/quick", { name });
+      await queryClient.invalidateQueries({ queryKey: ["marketplace", "products"] });
+      setModal(null);
+      onToast(`Product ${name} created for review`);
+    } catch (error) { onToast(error.response?.data?.detail || "Could not create product"); }
+  };
   const editProduct = (name) => {
     setItems((current) =>
       current.map((item) =>
@@ -955,6 +976,23 @@ function ProductsPage({ onToast }) {
     );
     setMenuId(null);
     onToast(`${item.name} ${status === "Archived" ? "archived" : "restored"}`);
+  };
+  const persistEditProduct = async (name) => {
+    try {
+      await mutateMarketplace("patch", `/products/${modal.item.resourceId || modal.item.id}`, { name });
+      await queryClient.invalidateQueries({ queryKey: ["marketplace", "products"] });
+      setModal(null);
+      onToast(`Product ${name} updated`);
+    } catch (error) { onToast(error.response?.data?.detail || "Could not update product"); }
+  };
+  const persistProductStatus = async (item, target) => {
+    try {
+      const action = target === "Active" && item.status === "Pending Review" ? "approve" : target === "Archived" ? "archive" : "restore";
+      await mutateMarketplace("post", `/products/${item.resourceId || item.id}/${action}`);
+      await queryClient.invalidateQueries({ queryKey: ["marketplace", "products"] });
+      setMenuId(null);
+      onToast(`Product status updated`);
+    } catch (error) { onToast(error.response?.data?.detail || "Could not update product"); }
   };
   return (
     <>
@@ -982,7 +1020,7 @@ function ProductsPage({ onToast }) {
       />
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
         <MetricCard
-          value={dashboardData.sellerHighlights[1].value}
+          value={String(items.filter((item) => item.status === "Active").length)}
           label="Active Listings"
           icon="bi-box-seam"
           tone="green"
@@ -999,7 +1037,7 @@ function ProductsPage({ onToast }) {
           <h2 className="text-sm font-bold text-ink">Products by Category</h2>
         </div>
         <div className="flex h-48 items-end justify-between gap-3 px-6 pb-5 pt-5">
-          {dashboardData.productCategoryMix.map(({ label, value, color }) => (
+          {productCategoryMix.map(({ label, value, color }) => (
             <div
               key={label}
               className="flex h-full flex-1 flex-col items-center justify-end"
@@ -1130,9 +1168,9 @@ function ProductsPage({ onToast }) {
                 onView={() => setDetails(item)}
                 onEdit={() => setModal({ type: "edit", item })}
                 onMore={() => setMenuId(menuId === item.id ? null : item.id)}
-                onApprove={() => updateStatus(item, "Active")}
+                onApprove={() => persistProductStatus(item, "Active")}
                 onArchive={() =>
-                  updateStatus(
+                  persistProductStatus(
                     item,
                     item.status === "Archived" ? "Active" : "Archived",
                   )
@@ -1178,7 +1216,7 @@ function ProductsPage({ onToast }) {
           label="Product name"
           placeholder="e.g. Wireless Keyboard"
           onClose={() => setModal(null)}
-          onSave={createProduct}
+          onSave={persistCreateProduct}
         />
       )}
       {modal?.type === "edit" && (
@@ -1187,7 +1225,7 @@ function ProductsPage({ onToast }) {
           label="Product name"
           initialValue={modal.item.name}
           onClose={() => setModal(null)}
-          onSave={editProduct}
+          onSave={persistEditProduct}
         />
       )}
       {details && (
@@ -1287,15 +1325,17 @@ function OrdersPage({ onToast }) {
     orders,
     {},
     (item) => ({
-      id: item.id,
+      resourceId: item.id,
+      id: item.order_number || item.id,
       buyer: item.buyer || item.buyer_name,
       items: item.items || item.item_count,
-      total: item.total,
+      total: formatCurrency(item.total),
       status: item.status,
-      placed: item.placed || item.placed_at || "",
+      placed: formatDate(item.placed || item.placed_at),
     }),
   );
   const [items, setItems] = useState(sourceItems);
+  useEffect(() => setItems(sourceItems), [sourceItems]);
   const [tab, setTab] = useState("All Orders");
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("All Statuses");
@@ -1303,6 +1343,13 @@ function OrdersPage({ onToast }) {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [details, setDetails] = useState(null);
   const [cancelItem, setCancelItem] = useState(null);
+  const queryClient = useQueryClient();
+  const ordersTrend = useMemo(
+    () => Object.entries(items.reduce((counts, item) => ({ ...counts, [item.placed]: (counts[item.placed] || 0) + 1 }), {}))
+      .map(([date, value]) => ({ date, value }))
+      .reverse(),
+    [items],
+  );
   const filtered = items.filter(
     (item) =>
       (!query ||
@@ -1314,6 +1361,15 @@ function OrdersPage({ onToast }) {
       (dateFilter === "Last 30 days" ||
         ["Aug 4", "Aug 3", "Aug 2", "Aug 1", "Jul 31", "Jul 30", "Jul 29"].some((date) => item.placed.includes(date))),
   );
+  const persistCancelOrder = async () => {
+    try {
+      await mutateMarketplace("post", `/orders/${cancelItem.resourceId || cancelItem.id}/cancel`);
+      await queryClient.invalidateQueries({ queryKey: ["marketplace", "orders"] });
+      await queryClient.invalidateQueries({ queryKey: ["marketplace", "dashboard"] });
+      onToast(`${cancelItem.id} cancelled`);
+      setCancelItem(null);
+    } catch (error) { onToast(error.response?.data?.detail || "Could not cancel order"); }
+  };
   const cancelOrder = () => {
     setItems((current) =>
       current.map((item) =>
@@ -1343,13 +1399,13 @@ function OrdersPage({ onToast }) {
       />
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
         <MetricCard
-          value={dashboardData.orderMetrics[0].value}
+          value={String(items.filter((item) => item.placed === items[0]?.placed).length)}
           label="Orders Today"
           icon="bi-cart3"
           tone="blue"
         />
         <MetricCard
-          value={dashboardData.orderMetrics[1].value}
+          value={`${items.length ? ((items.filter((item) => item.status === "Cancelled").length / items.length) * 100).toFixed(1) : "0.0"}%`}
           label="Cancellation Rate"
           icon="bi-x-circle"
           tone="rose"
@@ -1368,7 +1424,7 @@ function OrdersPage({ onToast }) {
         <div className="mt-4 h-52">
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart
-              data={dashboardData.ordersTrend}
+              data={ordersTrend}
               margin={{ top: 8, right: 4, left: -25, bottom: 0 }}
             >
               <CartesianGrid stroke="#eef2f7" vertical={false} />
@@ -1533,7 +1589,7 @@ function OrdersPage({ onToast }) {
           title={`Cancel ${cancelItem.id}?`}
           message="This will mark the order as cancelled and remove it from the fulfillment queue."
           onClose={() => setCancelItem(null)}
-          onConfirm={cancelOrder}
+          onConfirm={persistCancelOrder}
         />
       )}
     </>
@@ -1549,14 +1605,19 @@ function SellersPage({ onToast }) {
       id: item.id,
       business: item.business || item.business_name,
       owner: item.owner || item.owner_name,
-      commission: item.commission || `${item.commission_rate}%`,
+      commission: item.commission || `${Number(item.commission_rate).toFixed(0)}%`,
       rating: item.rating,
       status: item.status,
-      joined: item.joined || item.joined_on,
+      joined: formatDate(item.joined || item.joined_on),
     }),
   );
   const [sellerItems, setSellerItems] = useState(sourceItems);
-  const [applicationItems, setApplicationItems] = useState(applications);
+  useEffect(() => setSellerItems(sourceItems), [sourceItems]);
+  const [applicationItems, setApplicationItems] = useState([]);
+  useEffect(
+    () => setApplicationItems(sellerItems.filter((item) => item.status === "Pending Approval")),
+    [sellerItems],
+  );
   const [tab, setTab] = useState("Active Sellers");
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("All Statuses");
@@ -1890,20 +1951,23 @@ function ReviewsPage({ onToast }) {
     "reviews",
     reviews,
     { status: "Published" },
-    (item) => ({ ...item, id: item.id || item.product }),
+    (item) => ({ ...item, resourceId: item.id, id: item.id || item.product, product: item.product || item.product_name, buyer: item.buyer || item.buyer_name, submitted: formatDate(item.submitted || item.created_at), reason: item.reason || item.flag_reason }),
   );
   const { items: flaggedSource } = useMarketplaceList(
     "reviews",
     flaggedReviews,
     { status: "Flagged" },
-    (item) => ({ ...item, id: item.id || item.product }),
+    (item) => ({ ...item, resourceId: item.id, id: item.id || item.product, product: item.product || item.product_name, buyer: item.buyer || item.buyer_name, submitted: formatDate(item.submitted || item.created_at), reason: item.reason || item.flag_reason }),
   );
   const [publishedItems, setPublishedItems] = useState(publishedSource);
   const [flaggedItems, setFlaggedItems] = useState(flaggedSource);
+  useEffect(() => setPublishedItems(publishedSource), [publishedSource]);
+  useEffect(() => setFlaggedItems(flaggedSource), [flaggedSource]);
   const [tab, setTab] = useState("Published");
   const [query, setQuery] = useState("");
   const [ratingFilter, setRatingFilter] = useState("All Ratings");
   const [details, setDetails] = useState(null);
+  const queryClient = useQueryClient();
   const published = publishedItems.filter(
     (item) =>
       (!query || item.product.toLowerCase().includes(query.toLowerCase())) &&
@@ -1917,6 +1981,13 @@ function ReviewsPage({ onToast }) {
         .toLowerCase()
         .includes(query.toLowerCase()),
   );
+  const persistReviewAction = async (item, action) => {
+    try {
+      await mutateMarketplace("post", `/reviews/${item.resourceId || item.id}/${action}`);
+      await queryClient.invalidateQueries({ queryKey: ["marketplace", "reviews"] });
+      onToast(`${item.product} ${action === "flag" ? "flagged" : action}`);
+    } catch (error) { onToast(error.response?.data?.detail || "Could not moderate review"); }
+  };
   const flagReview = (item) => {
     setPublishedItems((current) => current.filter((row) => row.id !== item.id));
     setFlaggedItems((current) => [
@@ -1993,14 +2064,14 @@ function ReviewsPage({ onToast }) {
           <PublishedReviews
             items={published}
             onView={setDetails}
-            onFlag={flagReview}
+            onFlag={(item) => persistReviewAction(item, "flag")}
           />
         ) : (
           <FlaggedReviews
             items={flagged}
             onView={setDetails}
-            onRestore={restoreReview}
-            onRemove={removeReview}
+            onRestore={(item) => persistReviewAction(item, "restore")}
+            onRemove={(item) => persistReviewAction(item, "remove")}
           />
         )}
       </div>
@@ -2151,21 +2222,30 @@ function DisputesPage({ onToast }) {
     "disputes",
     disputes,
     { status: "Open" },
-    (item) => ({ ...item, id: item.id || item.dispute_number }),
+    (item) => ({ ...item, resourceId: item.id, id: item.dispute_number || item.id, order: item.order || item.order_number, raisedBy: item.raisedBy || item.raised_by, seller: item.seller || item.seller_name }),
   );
   const { items: resolvedSource } = useMarketplaceList(
     "disputes",
     resolvedDisputes,
     { status: "Resolved" },
-    (item) => ({ ...item, id: item.id || item.dispute_number }),
+    (item) => ({ ...item, resourceId: item.id, id: item.dispute_number || item.id, order: item.order || item.order_number, raisedBy: item.raisedBy || item.raised_by, seller: item.seller || item.seller_name, resolved: formatDate(item.resolved || item.resolved_at) }),
   );
   const [openItems, setOpenItems] = useState(openSource);
   const [resolvedItems, setResolvedItems] = useState(resolvedSource);
+  useEffect(() => setOpenItems(openSource), [openSource]);
+  useEffect(() => setResolvedItems(resolvedSource), [resolvedSource]);
   const [tab, setTab] = useState("Open");
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("All Statuses");
   const [details, setDetails] = useState(null);
   const [resolveItem, setResolveItem] = useState(null);
+  const queryClient = useQueryClient();
+  const disputeReasons = useMemo(
+    () => Object.entries(openItems.reduce((counts, item) => ({ ...counts, [item.reason]: (counts[item.reason] || 0) + 1 }), {}))
+      .map(([reason, value]) => ({ reason, value }))
+      .sort((left, right) => right.value - left.value),
+    [openItems],
+  );
   const visibleOpen = openItems.filter(
     (item) =>
       (!query ||
@@ -2181,6 +2261,15 @@ function DisputesPage({ onToast }) {
         .toLowerCase()
         .includes(query.toLowerCase()),
   );
+  const persistResolveDispute = async (outcome) => {
+    try {
+      await mutateMarketplace("post", `/disputes/${resolveItem.resourceId || resolveItem.id}/resolve`, { outcome });
+      await queryClient.invalidateQueries({ queryKey: ["marketplace", "disputes"] });
+      await queryClient.invalidateQueries({ queryKey: ["marketplace", "dashboard"] });
+      setResolveItem(null);
+      onToast("Dispute resolved");
+    } catch (error) { onToast(error.response?.data?.detail || "Could not resolve dispute"); }
+  };
   const resolveDispute = (outcome) => {
     const item = resolveItem;
     setOpenItems((current) => current.filter((row) => row.id !== item.id));
@@ -2215,7 +2304,7 @@ function DisputesPage({ onToast }) {
       <div className="card mt-4 p-4">
         <h2 className="text-sm font-bold text-ink">Disputes by Reason</h2>
         <div className="mt-4 space-y-3">
-          {dashboardData.disputeReasons.map(({ reason, value }) => (
+          {disputeReasons.map(({ reason, value }) => (
             <div key={reason} className="flex items-center gap-3 text-xs">
               <span className="w-24 truncate text-slate-600 sm:w-32">
                 {reason}
@@ -2223,7 +2312,7 @@ function DisputesPage({ onToast }) {
               <div className="h-2 flex-1 rounded-full bg-slate-100">
                 <div
                   className="h-2 rounded-full bg-rose-600"
-                  style={{ width: `${(value / Math.max(...dashboardData.disputeReasons.map((item) => item.value), 1)) * 100}%` }}
+                  style={{ width: `${(value / Math.max(...disputeReasons.map((item) => item.value), 1)) * 100}%` }}
                 />
               </div>
               <strong className="w-4 text-right text-slate-600">{value}</strong>
@@ -2384,13 +2473,13 @@ function DisputesPage({ onToast }) {
             <>
               <button
                 className="btn-secondary"
-                onClick={() => resolveDispute("Rejected")}
+                onClick={() => persistResolveDispute("Rejected")}
               >
                 Reject
               </button>
               <button
                 className="btn-primary"
-                onClick={() => resolveDispute("Refunded")}
+                onClick={() => persistResolveDispute("Refunded")}
               >
                 Refund
               </button>
@@ -2407,13 +2496,15 @@ function PayoutsPage({ onToast }) {
     "payouts",
     payouts,
     {},
-    (item) => ({ ...item, id: item.id || item.seller }),
+    (item) => ({ ...item, resourceId: item.id, id: item.id || item.seller, seller: item.seller || item.seller_name, amount: formatCurrency(item.amount), generated: formatDate(item.generated || item.generated_at) }),
   );
   const [items, setItems] = useState(sourceItems);
+  useEffect(() => setItems(sourceItems), [sourceItems]);
   const [tab, setTab] = useState("Pending");
   const [query, setQuery] = useState("");
   const [periodFilter, setPeriodFilter] = useState("All Periods");
   const [details, setDetails] = useState(null);
+  const queryClient = useQueryClient();
   const filtered = items.filter(
     (item) =>
       (!query || item.seller.toLowerCase().includes(query.toLowerCase())) &&
@@ -2422,10 +2513,38 @@ function PayoutsPage({ onToast }) {
         item.period === periodFilter ||
         item.period.replaceAll("-", "–") === periodFilter),
   );
-  const chart = dashboardData.payoutVolume;
+  const chart = useMemo(
+    () => Object.entries(items.reduce((totals, item) => ({ ...totals, [item.period]: (totals[item.period] || 0) + Number(String(item.amount).replace(/[^\d.]/g, "")) / 1000 }), {}))
+      .map(([period, amount]) => ({ period, amount: Math.round(amount) }))
+      .reverse(),
+    [items],
+  );
   const pendingTotal = items
     .filter((item) => item.status === "Pending")
     .reduce((total, item) => total + Number(item.amount.replace(/[^\d.]/g, "")), 0);
+  const persistGenerateBatch = async () => {
+    try {
+      await mutateMarketplace("post", "/payouts/generate");
+      await queryClient.invalidateQueries({ queryKey: ["marketplace", "payouts"] });
+      setTab("Pending");
+      onToast("Payout batch generated");
+    } catch (error) { onToast(error.response?.data?.detail || "Could not generate payout batch"); }
+  };
+  const persistPayoutTransition = async (item, target) => {
+    try {
+      await mutateMarketplace("post", `/payouts/${item.resourceId || item.id}/${target === "Paid" ? "mark-paid" : "release"}`);
+      await queryClient.invalidateQueries({ queryKey: ["marketplace", "payouts"] });
+      onToast(`${item.seller} payout updated`);
+    } catch (error) { onToast(error.response?.data?.detail || "Could not update payout"); }
+  };
+  const persistBulkRelease = async () => {
+    try {
+      const result = await mutateMarketplace("post", "/payouts/release-pending");
+      await queryClient.invalidateQueries({ queryKey: ["marketplace", "payouts"] });
+      setTab("Processing");
+      onToast(`${result.released} payouts moved to processing`);
+    } catch (error) { onToast(error.response?.data?.detail || "Could not release payouts"); }
+  };
   const generateBatch = () => {
     setItems((current) => [
       {
@@ -2466,7 +2585,7 @@ function PayoutsPage({ onToast }) {
         title="Payouts"
         subtitle="Seller payout batching and release"
         action={
-          <button className="btn-primary" onClick={generateBatch}>
+          <button className="btn-primary" onClick={persistGenerateBatch}>
             <Icon name="bi-plus-lg" />
             Generate Batch
           </button>
@@ -2533,7 +2652,7 @@ function PayoutsPage({ onToast }) {
             <option>Jun 16–30, 2026</option>
             <option>Jul 16–31, 2026</option>
           </select>
-          <button className="btn-secondary" onClick={bulkRelease}>
+          <button className="btn-secondary" onClick={persistBulkRelease}>
             Bulk release
           </button>
         </Toolbar>
@@ -2580,7 +2699,7 @@ function PayoutsPage({ onToast }) {
                     </button>
                     {item.status === "Pending" && (
                       <button
-                        onClick={() => transition(item, "Processing")}
+                        onClick={() => persistPayoutTransition(item, "Processing")}
                         className="btn-primary h-8 px-3 text-xs"
                       >
                         Release
@@ -2588,7 +2707,7 @@ function PayoutsPage({ onToast }) {
                     )}
                     {item.status === "Processing" && (
                       <button
-                        onClick={() => transition(item, "Paid")}
+                        onClick={() => persistPayoutTransition(item, "Paid")}
                         className="btn-primary h-8 px-3 text-xs"
                       >
                         Mark paid
@@ -2625,14 +2744,41 @@ function SettingsPage({ onToast }) {
     (item) => ({ ...item, parent: item.parent || "—" }),
   );
   const [categoryItems, setCategoryItems] = useState(sourceItems);
+  useEffect(() => setCategoryItems(sourceItems), [sourceItems]);
   const [tab, setTab] = useState("Categories");
   const [query, setQuery] = useState("");
   const [modal, setModal] = useState(null);
+  const queryClient = useQueryClient();
   const filtered = categoryItems.filter(
     (item) =>
       !query ||
       `${item.name} ${item.slug}`.toLowerCase().includes(query.toLowerCase()),
   );
+  const persistCreateCategory = async (name) => {
+    const slug = name.toLowerCase().trim().replaceAll(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+    try {
+      await mutateMarketplace("post", "/categories", { name, slug });
+      await queryClient.invalidateQueries({ queryKey: ["marketplace", "categories"] });
+      setModal(null);
+      onToast(`Category ${name} created`);
+    } catch (error) { onToast(error.response?.data?.detail || "Could not create category"); }
+  };
+  const persistRenameCategory = async (name) => {
+    const slug = name.toLowerCase().trim().replaceAll(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+    try {
+      await mutateMarketplace("patch", `/categories/${modal.item.id}`, { name, slug });
+      await queryClient.invalidateQueries({ queryKey: ["marketplace", "categories"] });
+      setModal(null);
+      onToast(`Category renamed to ${name}`);
+    } catch (error) { onToast(error.response?.data?.detail || "Could not update category"); }
+  };
+  const persistCategoryStatus = async (item) => {
+    try {
+      await mutateMarketplace("patch", `/categories/${item.id}`, { status: item.status === "Active" ? "Archived" : "Active" });
+      await queryClient.invalidateQueries({ queryKey: ["marketplace", "categories"] });
+      onToast("Category status updated");
+    } catch (error) { onToast(error.response?.data?.detail || "Could not update category"); }
+  };
   const createCategory = (name) => {
     const slug = name
       .toLowerCase()
@@ -2736,7 +2882,7 @@ function SettingsPage({ onToast }) {
                       </button>
                       <button
                         aria-label={`${item.status === "Active" ? "Archive" : "Restore"} category ${item.name}`}
-                        onClick={() => toggleCategory(item)}
+                        onClick={() => persistCategoryStatus(item)}
                       >
                         <Icon
                           name={
@@ -2764,7 +2910,7 @@ function SettingsPage({ onToast }) {
           label="Category name"
           placeholder="e.g. Pet Supplies"
           onClose={() => setModal(null)}
-          onSave={createCategory}
+          onSave={persistCreateCategory}
         />
       )}
       {modal?.type === "edit" && (
@@ -2773,7 +2919,7 @@ function SettingsPage({ onToast }) {
           label="Category name"
           initialValue={modal.item.name}
           onClose={() => setModal(null)}
-          onSave={renameCategory}
+          onSave={persistRenameCategory}
         />
       )}
     </>
@@ -2791,7 +2937,7 @@ function CommissionCard({ onToast }) {
     setSaved(false);
     setValues((current) => ({ ...current, [key]: value }));
   };
-  const save = () => {
+  const save = async () => {
     const valid = Object.values(values).every(
       (value) => Number(value) >= 0 && Number(value) <= 100,
     );
@@ -2799,8 +2945,15 @@ function CommissionCard({ onToast }) {
       onToast("Commission rates must be between 0 and 100");
       return;
     }
-    setSaved(true);
-    onToast("Commission policy saved");
+    try {
+      await mutateMarketplace("put", "/policies/commission", {
+        default_rate: Number(values.defaultRate),
+        overrides: { electronics: Number(values.electronics), groceries: Number(values.groceries) },
+        mode: "override",
+      });
+      setSaved(true);
+      onToast("Commission policy saved");
+    } catch (error) { onToast(error.response?.data?.detail || "Could not save commission policy"); }
   };
   return (
     <div className="card mt-4 max-w-2xl p-5">
@@ -2861,13 +3014,19 @@ function CommissionCard({ onToast }) {
 function DisputePolicyCard({ onToast }) {
   const [values, setValues] = useState({ response: "3", escalation: "7" });
   const [saved, setSaved] = useState(false);
-  const save = () => {
+  const save = async () => {
     if (Number(values.response) <= 0 || Number(values.escalation) <= 0) {
       onToast("Policy days must be greater than zero");
       return;
     }
-    setSaved(true);
-    onToast("Dispute policy saved");
+    try {
+      await mutateMarketplace("put", "/policies/dispute", {
+        response_window_days: Number(values.response),
+        auto_escalate_after_days: Number(values.escalation),
+      });
+      setSaved(true);
+      onToast("Dispute policy saved");
+    } catch (error) { onToast(error.response?.data?.detail || "Could not save dispute policy"); }
   };
   return (
     <div className="card mt-4 max-w-2xl p-5">

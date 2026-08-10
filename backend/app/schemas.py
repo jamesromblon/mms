@@ -39,6 +39,13 @@ class ProductCreate(BaseModel):
     stock: int = Field(ge=0)
 
 
+class ProductUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=2, max_length=200)
+    sku: str | None = Field(default=None, min_length=2, max_length=80)
+    price: Decimal | None = Field(default=None, gt=0)
+    stock: int | None = Field(default=None, ge=0)
+
+
 class OrderRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: uuid.UUID
@@ -74,6 +81,12 @@ class CategoryCreate(BaseModel):
     name: str = Field(min_length=2, max_length=120)
     slug: str = Field(min_length=2, max_length=120)
     parent_id: uuid.UUID | None = None
+
+
+class CategoryUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=2, max_length=120)
+    slug: str | None = Field(default=None, min_length=2, max_length=120)
+    status: str | None = Field(default=None, pattern="^(Active|Archived)$")
 
 
 class ReviewRead(BaseModel):
@@ -127,4 +140,6 @@ class DashboardRead(BaseModel):
     metrics: list[DashboardMetric]
     order_status: list[dict[str, str | int]]
     top_sellers: list[dict[str, str | int]]
-
+    trends: dict[str, list[dict[str, float | str]]]
+    seller_highlights: list[dict[str, str]]
+    seller_metrics: list[DashboardMetric]

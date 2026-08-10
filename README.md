@@ -33,6 +33,8 @@ The project provides a polished React demonstration interface and a FastAPI/Post
 
 ## Local setup
 
+For a client-facing, step-by-step handoff guide, see [RUN_LOCAL.md](RUN_LOCAL.md).
+
 1. Clone the repository and install the frontend dependencies.
 
    ```powershell

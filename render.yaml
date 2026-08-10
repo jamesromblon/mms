@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: argo-marketplace-api
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -e ".[dev]"
+    preDeployCommand: alembic upgrade head
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    autoDeployTrigger: commit
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: DATABASE_URL
+        sync: false
+      - key: DIRECT_URL
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
+      - key: ARGO_AUTH_MODE
+        sync: false
+      - key: ARGO_JWT_ISSUER
+        sync: false
+      - key: ARGO_JWT_AUDIENCE
+        sync: false
+      - key: ARGO_JWT_JWKS_URL
+        sync: false

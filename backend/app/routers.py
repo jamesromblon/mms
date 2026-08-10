@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from .auth import AuthContext, require_roles
 from .db import get_db
-from .models import Category, Dispute, Order, Payout, Product, Review, Seller
+from .models import Category, Dispute, Order, Payout, Policy, Product, Review, Seller
 from .schemas import (
     CategoryCreate,
     CategoryRead,
@@ -24,8 +24,10 @@ from .schemas import (
     PayoutRead,
     ProductCreate,
     ProductRead,
+    ProductUpdate,
     ReviewRead,
     SellerRead,
+    CategoryUpdate,
 )
 
 router = APIRouter()
@@ -74,6 +76,24 @@ def dashboard(
             .group_by(Order.status)
         ).all()
     )
+    total_orders = sum(status_counts.values()) or 1
+    order_rows = db.execute(
+        select(Order.placed_at, Order.total).where(
+            Order.organization_id == context.organization_id, Order.status != "Cancelled"
+        ).order_by(Order.placed_at)
+    ).all()
+    gmv_by_day: dict[str, Decimal] = {}
+    for placed_at, total in order_rows:
+        if placed_at:
+            key = placed_at.date().isoformat()
+            gmv_by_day[key] = gmv_by_day.get(key, Decimal("0")) + total
+    daily_gmv = [{"date": day, "value": float(amount)} for day, amount in gmv_by_day.items()]
+    active_listings = db.scalar(
+        select(func.count(Product.id)).where(Product.organization_id == context.organization_id, Product.status == "Active")
+    ) or 0
+    average_rating = db.scalar(
+        select(func.avg(Review.rating)).where(Review.organization_id == context.organization_id, Review.status == "Published")
+    ) or 0
     payout_rows = db.execute(
         select(Payout.seller_name, func.sum(Payout.amount))
         .where(Payout.organization_id == context.organization_id)
@@ -92,30 +112,29 @@ def dashboard(
                 label="Avg. Fulfillment Time", value="5.4 hrs", change="0.6h faster", direction="down"
             ),
         ],
-        order_status=[{"name": status, "value": count} for status, count in sorted(status_counts.items())],
+        order_status=[
+            {"name": status, "value": round((count / total_orders) * 100)}
+            for status, count in sorted(status_counts.items())
+        ],
         top_sellers=[
             {"name": seller, "amount": f"{peso}{amount / 1000:,.0f}K", "width": int((amount / maximum) * 100)}
             for seller, amount in payout_rows
         ],
-    )
-
-    return DashboardRead(
-        metrics=[
-            DashboardMetric(label="GMV (30d)", value="₱1.86M", change="12.4%", direction="up"),
-            DashboardMetric(label="Active Sellers", value="86", change="4", direction="up"),
-            DashboardMetric(label="Open Disputes", value="2"),
-            DashboardMetric(label="Avg. Fulfillment Time", value="6.2 hrs", change="0.8h", direction="down"),
+        trends={
+            "Last 7 days": daily_gmv[-7:],
+            "Last 30 days": daily_gmv[-30:],
+            "Last 90 days": daily_gmv[-90:],
+        },
+        seller_highlights=[
+            {"value": f"{peso}{gmv:,.0f}", "label": "Revenue (all orders)", "icon": "bi-graph-up-arrow", "tone": "blue"},
+            {"value": str(active_listings), "label": "Active Listings", "icon": "bi-box-seam", "tone": "green"},
+            {"value": f"{float(average_rating):.1f}", "label": "Avg. Rating", "icon": "bi-star-fill", "tone": "amber"},
+            {"value": f"{(status_counts.get('Cancelled', 0) / total_orders) * 100:.1f}%", "label": "Cancellation Rate", "icon": "bi-arrow-return-left", "tone": "rose"},
         ],
-        order_status=[
-            {"name": "Completed", "value": 52},
-            {"name": "Confirmed", "value": 22},
-            {"name": "Active", "value": 14},
-            {"name": "Cancelled", "value": 12},
-        ],
-        top_sellers=[
-            {"name": "TechHub Traders", "amount": "₱412K", "width": 100},
-            {"name": "Urban Grocers Co.", "amount": "₱349K", "width": 84},
-            {"name": "Fresh Fields Market", "amount": "₱271K", "width": 66},
+        seller_metrics=[
+            DashboardMetric(label="Active Sellers", value=str(active_sellers), change="Live", direction="up"),
+            DashboardMetric(label="Active Listings", value=str(active_listings), change="Live", direction="up"),
+            DashboardMetric(label="Avg. Rating", value=f"{float(average_rating):.1f}", change="Live", direction="up"),
         ],
     )
 
@@ -205,6 +224,37 @@ def create_product(
     )
 
 
+@router.post("/products/quick", response_model=ProductRead, status_code=status.HTTP_201_CREATED)
+def quick_create_product(
+    payload: dict[str, str],
+    db: Session = Depends(get_db),
+    context: AuthContext = Depends(require_roles("Catalog Moderator")),
+) -> ProductRead:
+    """Create a catalog draft from the streamlined operations modal."""
+    name = str(payload.get("name", "")).strip()
+    if len(name) < 2:
+        raise HTTPException(status_code=422, detail="Product name must contain at least two characters")
+    seller = db.scalar(
+        select(Seller).where(Seller.organization_id == context.organization_id, Seller.status == "Active").order_by(Seller.business_name)
+    )
+    category = db.scalar(
+        select(Category).where(Category.organization_id == context.organization_id, Category.status == "Active").order_by(Category.name)
+    )
+    if not seller or not category:
+        raise HTTPException(status_code=409, detail="Create an active seller and category before creating a product")
+    item = Product(
+        organization_id=context.organization_id, seller_id=seller.id, category_id=category.id,
+        name=name, sku=f"DRAFT-{uuid.uuid4().hex[:8].upper()}", price=Decimal("1.00"), stock=0,
+    )
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+    return ProductRead(
+        id=item.id, name=item.name, sku=item.sku, seller=seller.business_name, category=category.name,
+        price=item.price, stock=item.stock, status=item.status, updated=item.updated_at,
+    )
+
+
 def _product_action(product_id: uuid.UUID, action: str, db: Session, context: AuthContext) -> dict[str, str]:
     item = db.scalar(
         select(Product).where(Product.id == product_id, Product.organization_id == context.organization_id)
@@ -233,6 +283,30 @@ def approve_product(
     return _product_action(product_id, "approve", db, context)
 
 
+@router.patch("/products/{product_id}", response_model=ProductRead)
+def update_product(
+    product_id: uuid.UUID,
+    payload: ProductUpdate,
+    db: Session = Depends(get_db),
+    context: AuthContext = Depends(require_roles("Catalog Moderator")),
+) -> ProductRead:
+    item = db.scalar(
+        select(Product).where(Product.id == product_id, Product.organization_id == context.organization_id)
+    )
+    if not item:
+        raise HTTPException(status_code=404, detail="Product not found")
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(item, field, value)
+    db.commit()
+    db.refresh(item)
+    seller = db.scalar(select(Seller.business_name).where(Seller.id == item.seller_id)) or "Unknown seller"
+    category = db.scalar(select(Category.name).where(Category.id == item.category_id)) or "Uncategorized"
+    return ProductRead(
+        id=item.id, name=item.name, sku=item.sku, seller=seller, category=category,
+        price=item.price, stock=item.stock, status=item.status, updated=item.updated_at,
+    )
+
+
 @router.post("/products/{product_id}/archive")
 def archive_product(
     product_id: uuid.UUID,
@@ -240,6 +314,15 @@ def archive_product(
     context: AuthContext = Depends(require_roles("Catalog Moderator")),
 ) -> dict[str, str]:
     return _product_action(product_id, "archive", db, context)
+
+
+@router.post("/products/{product_id}/restore")
+def restore_product(
+    product_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    context: AuthContext = Depends(require_roles("Catalog Moderator")),
+) -> dict[str, str]:
+    return _product_action(product_id, "restore", db, context)
 
 
 @router.get("/orders", response_model=ListResponse[OrderRead])
@@ -268,6 +351,23 @@ def list_orders(
         page_size=limit,
         total=db.scalar(count_query) or 0,
     )
+
+
+@router.post("/orders/{order_id}/cancel", response_model=OrderRead)
+def cancel_order(
+    order_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    context: AuthContext = Depends(require_roles("Operations/Disputes")),
+) -> OrderRead:
+    item = db.scalar(select(Order).where(Order.id == order_id, Order.organization_id == context.organization_id))
+    if not item:
+        raise HTTPException(status_code=404, detail="Order not found")
+    if item.status in {"Completed", "Cancelled"}:
+        raise HTTPException(status_code=409, detail=f"Cannot cancel an order that is {item.status.lower()}")
+    item.status = "Cancelled"
+    db.commit()
+    db.refresh(item)
+    return OrderRead.model_validate(item)
 
 
 @router.get("/sellers", response_model=ListResponse[SellerRead])
@@ -336,14 +436,16 @@ def moderate_review(
     db: Session = Depends(get_db),
     context: AuthContext = Depends(require_roles("Catalog Moderator")),
 ) -> dict[str, str]:
-    if action not in {"restore", "remove"}:
+    if action not in {"flag", "restore", "remove"}:
         raise HTTPException(status_code=404, detail="Unknown review action")
     item = db.scalar(
         select(Review).where(Review.id == review_id, Review.organization_id == context.organization_id)
     )
     if not item:
         raise HTTPException(status_code=404, detail="Review not found")
-    item.status = "Published" if action == "restore" else "Removed"
+    item.status = {"flag": "Flagged", "restore": "Published", "remove": "Removed"}[action]
+    if action == "flag" and not item.flag_reason:
+        item.flag_reason = "Flagged for moderation"
     db.commit()
     return {"id": str(item.id), "status": item.status}
 
@@ -483,6 +585,37 @@ def release_payout(
     return PayoutRead.model_validate(item)
 
 
+@router.post("/payouts/{payout_id}/mark-paid", response_model=PayoutRead)
+def mark_payout_paid(
+    payout_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    context: AuthContext = Depends(require_roles("Finance/Payouts")),
+) -> PayoutRead:
+    item = db.scalar(select(Payout).where(Payout.id == payout_id, Payout.organization_id == context.organization_id))
+    if not item:
+        raise HTTPException(status_code=404, detail="Payout not found")
+    if item.status != "Processing":
+        raise HTTPException(status_code=409, detail="Only processing payouts can be marked paid")
+    item.status = "Paid"
+    db.commit()
+    db.refresh(item)
+    return PayoutRead.model_validate(item)
+
+
+@router.post("/payouts/release-pending")
+def release_pending_payouts(
+    db: Session = Depends(get_db),
+    context: AuthContext = Depends(require_roles("Finance/Payouts")),
+) -> dict[str, int]:
+    result = db.execute(
+        select(Payout).where(Payout.organization_id == context.organization_id, Payout.status == "Pending")
+    ).scalars().all()
+    for item in result:
+        item.status = "Processing"
+    db.commit()
+    return {"released": len(result)}
+
+
 @router.get("/categories", response_model=ListResponse[CategoryRead])
 def list_categories(
     search: str | None = None,
@@ -525,31 +658,62 @@ def create_category(
     return CategoryRead.model_validate(item)
 
 
+@router.patch("/categories/{category_id}", response_model=CategoryRead)
+def update_category(
+    category_id: uuid.UUID,
+    payload: CategoryUpdate,
+    db: Session = Depends(get_db),
+    context: AuthContext = Depends(require_roles("Marketplace Admin", "Catalog Moderator")),
+) -> CategoryRead:
+    item = db.scalar(select(Category).where(Category.id == category_id, Category.organization_id == context.organization_id))
+    if not item:
+        raise HTTPException(status_code=404, detail="Category not found")
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(item, field, value)
+    db.commit()
+    db.refresh(item)
+    return CategoryRead.model_validate(item)
+
+
 @router.get("/policies/commission")
 def get_commission_policy(
-    context: AuthContext = Depends(
+    db: Session = Depends(get_db), context: AuthContext = Depends(
         require_roles("Marketplace Admin", "Catalog Moderator", "Finance/Payouts")
     ),
 ) -> dict[str, Any]:
-    return {"default_rate": 12.0, "overrides": {"electronics": 15.0, "groceries": 10.0}, "mode": "override"}
+    policy = db.scalar(select(Policy).where(Policy.organization_id == context.organization_id, Policy.kind == "commission"))
+    return policy.configuration if policy else {"default_rate": 12.0, "overrides": {}, "mode": "override"}
 
 
 @router.put("/policies/commission")
 def update_commission_policy(
-    payload: dict[str, Any], context: AuthContext = Depends(require_roles("Marketplace Admin"))
+    payload: dict[str, Any], db: Session = Depends(get_db), context: AuthContext = Depends(require_roles("Marketplace Admin"))
 ) -> dict[str, Any]:
-    return {"organization_id": str(context.organization_id), **payload}
+    policy = db.scalar(select(Policy).where(Policy.organization_id == context.organization_id, Policy.kind == "commission"))
+    if policy:
+        policy.configuration = payload
+    else:
+        db.add(Policy(organization_id=context.organization_id, kind="commission", configuration=payload))
+    db.commit()
+    return payload
 
 
 @router.get("/policies/dispute")
 def get_dispute_policy(
-    context: AuthContext = Depends(require_roles("Marketplace Admin", "Operations/Disputes")),
+    db: Session = Depends(get_db), context: AuthContext = Depends(require_roles("Marketplace Admin", "Operations/Disputes")),
 ) -> dict[str, Any]:
-    return {"response_window_days": 3, "auto_escalate_after_days": 7}
+    policy = db.scalar(select(Policy).where(Policy.organization_id == context.organization_id, Policy.kind == "dispute"))
+    return policy.configuration if policy else {"response_window_days": 3, "auto_escalate_after_days": 7}
 
 
 @router.put("/policies/dispute")
 def update_dispute_policy(
-    payload: dict[str, Any], context: AuthContext = Depends(require_roles("Marketplace Admin"))
+    payload: dict[str, Any], db: Session = Depends(get_db), context: AuthContext = Depends(require_roles("Marketplace Admin"))
 ) -> dict[str, Any]:
-    return {"organization_id": str(context.organization_id), **payload}
+    policy = db.scalar(select(Policy).where(Policy.organization_id == context.organization_id, Policy.kind == "dispute"))
+    if policy:
+        policy.configuration = payload
+    else:
+        db.add(Policy(organization_id=context.organization_id, kind="dispute", configuration=payload))
+    db.commit()
+    return payload

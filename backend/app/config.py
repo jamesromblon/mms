@@ -6,6 +6,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     database_url: str = "postgresql+psycopg2://marketplace:marketplace@localhost:5432/argo_marketplace"
+    direct_url: str | None = None
     argo_auth_mode: str = Field(default="dev", validation_alias="ARGO_AUTH_MODE")
     argo_jwt_issuer: str = ""
     argo_jwt_audience: str = ""
@@ -24,4 +25,3 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
-
