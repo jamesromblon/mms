@@ -35,6 +35,10 @@ The project provides a polished React demonstration interface and a FastAPI/Post
 
 For a client-facing, step-by-step handoff guide, see [RUN_LOCAL.md](RUN_LOCAL.md).
 
+## Production deployment
+
+The repository includes a Render Blueprint (`render.yaml`) and Vercel SPA rewrite configuration (`frontend/vercel.json`). Before making the API public, configure a production ARGO JWT issuer, audience, and JWKS URL; do not deploy with `ARGO_AUTH_MODE=dev`. Add the Supabase database URLs only through the host's encrypted environment-variable settings, then set `CORS_ORIGINS` to the final Vercel URL and `VITE_API_URL` to the final Render API URL.
+
 1. Clone the repository and install the frontend dependencies.
 
    ```powershell
