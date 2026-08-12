@@ -66,7 +66,7 @@ const navItems = [
   { label: "Payouts", to: "/payouts", icon: "bi-wallet2" },
 ];
 
-function Sidebar({ open, onClose }) {
+function Sidebar({ compact, onCompactToggle, open, onClose }) {
   return (
     <>
       {open && (
@@ -78,18 +78,38 @@ function Sidebar({ open, onClose }) {
       )}
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-40 flex w-52 -translate-x-full flex-col bg-navy text-slate-300 transition-transform lg:translate-x-0",
+          "fixed inset-y-0 left-0 z-40 flex w-52 -translate-x-full flex-col bg-navy text-slate-300 transition-[transform,width] duration-200 lg:translate-x-0",
           open && "translate-x-0",
+          compact && "lg:w-[4.5rem]",
         )}
       >
-        <div className="flex h-[101px] flex-col justify-center border-b border-white/5 px-4">
-          <div className="flex items-center gap-2 text-[11px] font-semibold tracking-tight text-slate-100">
-            <Icon name="bi-card-list" className="text-slate-400" />
-            Marketplace Management System
+        <div
+          className={cn(
+            "relative flex h-[101px] items-center border-b border-white/5 px-4",
+            compact && "lg:justify-center lg:px-0",
+          )}
+        >
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-600 text-sm text-white">
+              <Icon name="bi-shop" />
+            </div>
+            <div className={cn("min-w-0", compact && "lg:hidden")}>
+              <div className="text-sm font-semibold text-white">Marketplace</div>
+              <div className="text-[10px] font-medium text-slate-400">
+                Management System
+              </div>
+            </div>
           </div>
-          <div className="mt-1 pl-5 text-[10px] text-slate-500">
-            ARGO operations workspace
-          </div>
+          <button
+            type="button"
+            aria-label={compact ? "Expand sidebar" : "Compact sidebar"}
+            aria-pressed={compact}
+            title={compact ? "Expand sidebar" : "Compact sidebar"}
+            onClick={onCompactToggle}
+            className="absolute -right-3 z-50 hidden h-7 w-7 items-center justify-center rounded-md border border-slate-700 bg-navy text-slate-400 shadow-sm transition hover:bg-slate-800 hover:text-white focus:outline-none focus:ring-2 focus:ring-blue-400 lg:inline-flex"
+          >
+            <Icon name={compact ? "bi-chevron-right" : "bi-chevron-left"} />
+          </button>
         </div>
         <nav
           className="flex-1 space-y-1 px-2 py-4"
@@ -100,9 +120,12 @@ function Sidebar({ open, onClose }) {
               key={item.to}
               to={item.to}
               onClick={onClose}
+              aria-label={item.label}
+              title={compact ? item.label : undefined}
               className={({ isActive }) =>
                 cn(
-                  "group flex h-9 items-center gap-3 rounded-lg px-3 text-[13px] transition",
+                  "group flex h-9 items-center gap-3 rounded-lg px-3 text-[13px] transition lg:justify-start",
+                  compact && "lg:justify-center lg:px-0",
                   isActive
                     ? "bg-slate-700/60 text-white"
                     : "text-slate-400 hover:bg-white/5 hover:text-slate-100",
@@ -118,11 +141,14 @@ function Sidebar({ open, onClose }) {
                       isActive ? "text-blue-300" : "text-slate-500",
                     )}
                   />
-                  <span className="flex-1">{item.label}</span>
+                  <span className={cn("flex-1", compact && "lg:sr-only")}>
+                    {item.label}
+                  </span>
                   {item.badge && (
                     <span
                       className={cn(
                         "rounded-full px-1.5 py-0.5 text-[10px] font-semibold",
+                        compact && "lg:hidden",
                         isActive ? "bg-blue-600 text-white" : "text-slate-300",
                       )}
                     >
@@ -133,15 +159,23 @@ function Sidebar({ open, onClose }) {
               )}
             </NavLink>
           ))}
-          <div className="px-3 pb-1 pt-5 text-[10px] font-semibold uppercase tracking-widest text-slate-600">
+          <div
+            className={cn(
+              "px-3 pb-1 pt-5 text-[10px] font-semibold uppercase tracking-widest text-slate-600",
+              compact && "lg:sr-only",
+            )}
+          >
             Administration
           </div>
           <NavLink
             to="/settings"
             onClick={onClose}
+            aria-label="Settings"
+            title={compact ? "Settings" : undefined}
             className={({ isActive }) =>
               cn(
-                "group flex h-9 items-center gap-3 rounded-lg px-3 text-[13px] transition",
+                "group flex h-9 items-center gap-3 rounded-lg px-3 text-[13px] transition lg:justify-start",
+                compact && "lg:justify-center lg:px-0",
                 isActive
                   ? "bg-slate-700/60 text-white"
                   : "text-slate-400 hover:bg-white/5 hover:text-slate-100",
@@ -157,12 +191,17 @@ function Sidebar({ open, onClose }) {
                     isActive ? "text-blue-300" : "text-slate-500",
                   )}
                 />
-                <span>Settings</span>
+                <span className={cn(compact && "lg:sr-only")}>Settings</span>
               </>
             )}
           </NavLink>
         </nav>
-        <div className="border-t border-white/5 px-4 py-3 text-[10px] text-slate-600">
+        <div
+          className={cn(
+            "border-t border-white/5 px-4 py-3 text-[10px] text-slate-600",
+            compact && "lg:hidden",
+          )}
+        >
           Argo · Marketplace v1.0
         </div>
       </aside>
@@ -170,66 +209,26 @@ function Sidebar({ open, onClose }) {
   );
 }
 
-function Topbar({ onMenu, onToast }) {
-  const [view, setView] = useState("Desktop");
+function Topbar({ compact, onMenu, onToast }) {
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
 
   return (
-    <header className="fixed inset-x-0 top-0 z-20 h-[101px] bg-navy text-white lg:left-52">
-      <div className="flex h-full items-center justify-between gap-4 px-4 sm:px-6 lg:px-7">
-        <div className="flex min-w-0 items-center gap-3">
-          <button
-            aria-label="Open navigation"
-            className="rounded-lg p-2 text-slate-300 hover:bg-white/10 lg:hidden"
-            onClick={onMenu}
-          >
-            <Icon name="bi-list" />
-          </button>
-          <div className="flex items-center gap-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 text-sm">
-              <Icon name="bi-shop" />
-            </div>
-            <div className="hidden sm:block">
-              <div className="text-sm font-semibold">Marketplace</div>
-              <div className="text-[10px] text-slate-500">
-                Management module
-              </div>
-            </div>
-          </div>
-          <div className="hidden h-9 w-px bg-white/10 sm:block" />
-          <div className="flex items-center gap-2 rounded-xl bg-white/10 px-3 py-2 text-xs font-semibold">
-            <span className="flex h-5 w-5 items-center justify-center rounded-md bg-violet-500 text-[10px]">
-              AP
-            </span>
-            {demoIdentity.marketplaceName}
-          </div>
-        </div>
+    <header
+      className={cn(
+        "fixed inset-x-0 top-0 z-20 h-[101px] bg-navy text-white transition-[left] duration-200 lg:left-52",
+        compact && "lg:left-[4.5rem]",
+      )}
+    >
+      <div className="flex h-full items-center justify-end gap-4 px-4 sm:px-6 lg:px-7">
+        <button
+          aria-label="Open navigation"
+          className="mr-auto rounded-lg p-2 text-slate-300 hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-blue-400 lg:hidden"
+          onClick={onMenu}
+        >
+          <Icon name="bi-list" />
+        </button>
         <div className="flex items-center gap-2 sm:gap-4">
-          <div className="hidden rounded-lg bg-white/5 p-0.5 sm:flex">
-            {["Desktop", "Mobile"].map((item) => (
-              <button
-                key={item}
-                aria-pressed={view === item}
-                onClick={() => {
-                  setView(item);
-                  onToast(`${item} preview selected`);
-                }}
-                className={cn(
-                  "rounded-md px-3 py-1.5 text-[11px]",
-                  view === item
-                    ? "bg-blue-600 text-white"
-                    : "text-slate-400 hover:text-white",
-                )}
-              >
-                <Icon
-                  name={item === "Desktop" ? "bi-display" : "bi-phone"}
-                  className="mr-1"
-                />
-                {item}
-              </button>
-            ))}
-          </div>
           <div className="relative">
             <button
               aria-label="Notifications"
@@ -338,12 +337,27 @@ function Topbar({ onMenu, onToast }) {
 }
 
 function Layout({ children, toast, onToast }) {
+  const [sidebarCompact, setSidebarCompact] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   return (
     <div className="min-h-screen bg-canvas">
-      <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-      <Topbar onMenu={() => setSidebarOpen(true)} onToast={onToast} />
-      <main className="min-h-screen pt-[101px] lg:ml-52">
+      <Sidebar
+        compact={sidebarCompact}
+        onCompactToggle={() => setSidebarCompact((value) => !value)}
+        open={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+      />
+      <Topbar
+        compact={sidebarCompact}
+        onMenu={() => setSidebarOpen(true)}
+        onToast={onToast}
+      />
+      <main
+        className={cn(
+          "min-h-screen pt-[101px] transition-[margin] duration-200 lg:ml-52",
+          sidebarCompact && "lg:ml-[4.5rem]",
+        )}
+      >
         <div className="mx-auto max-w-[1440px] p-4 sm:p-6 lg:p-7">
           {children}
         </div>
