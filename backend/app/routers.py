@@ -23,6 +23,7 @@ from .schemas import (
     OrderRead,
     PayoutRead,
     ProductCreate,
+    ProductBulkDelete,
     ProductRead,
     ProductUpdate,
     ReviewRead,
@@ -240,33 +241,32 @@ def create_product(
 
 @router.post("/products/quick", response_model=ProductRead, status_code=status.HTTP_201_CREATED)
 def quick_create_product(
-    payload: dict[str, str],
-    db: Session = Depends(get_db),
     context: AuthContext = Depends(require_roles("Catalog Moderator")),
 ) -> ProductRead:
-    """Create a catalog draft from the streamlined operations modal."""
-    name = str(payload.get("name", "")).strip()
-    if len(name) < 2:
-        raise HTTPException(status_code=422, detail="Product name must contain at least two characters")
-    seller = db.scalar(
-        select(Seller).where(Seller.organization_id == context.organization_id, Seller.status == "Active").order_by(Seller.business_name)
+    raise HTTPException(
+        status_code=status.HTTP_410_GONE,
+        detail="Use the complete product form to choose the seller, category, price, and stock.",
     )
-    category = db.scalar(
-        select(Category).where(Category.organization_id == context.organization_id, Category.status == "Active").order_by(Category.name)
-    )
-    if not seller or not category:
-        raise HTTPException(status_code=409, detail="Create an active seller and category before creating a product")
-    item = Product(
-        organization_id=context.organization_id, seller_id=seller.id, category_id=category.id,
-        name=name, sku=f"DRAFT-{uuid.uuid4().hex[:8].upper()}", price=Decimal("1.00"), stock=0,
-    )
-    db.add(item)
+
+
+@router.post("/products/bulk-delete")
+def bulk_delete_products(
+    payload: ProductBulkDelete,
+    db: Session = Depends(get_db),
+    context: AuthContext = Depends(require_roles("Catalog Moderator")),
+) -> dict[str, int]:
+    items = db.scalars(
+        select(Product).where(
+            Product.id.in_(payload.product_ids),
+            Product.organization_id == context.organization_id,
+        )
+    ).all()
+    if len(items) != len(payload.product_ids):
+        raise HTTPException(status_code=404, detail="One or more products were not found in this marketplace")
+    for item in items:
+        db.delete(item)
     db.commit()
-    db.refresh(item)
-    return ProductRead(
-        id=item.id, name=item.name, sku=item.sku, seller=seller.business_name, category=category.name,
-        price=item.price, stock=item.stock, status=item.status, updated=item.updated_at,
-    )
+    return {"deleted": len(items)}
 
 
 def _product_action(product_id: uuid.UUID, action: str, db: Session, context: AuthContext) -> dict[str, str]:
@@ -286,6 +286,21 @@ def _product_action(product_id: uuid.UUID, action: str, db: Session, context: Au
     item.status = target
     db.commit()
     return {"id": str(item.id), "status": item.status}
+
+
+@router.delete("/products/{product_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_product(
+    product_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    context: AuthContext = Depends(require_roles("Catalog Moderator")),
+) -> None:
+    item = db.scalar(
+        select(Product).where(Product.id == product_id, Product.organization_id == context.organization_id)
+    )
+    if not item:
+        raise HTTPException(status_code=404, detail="Product not found")
+    db.delete(item)
+    db.commit()
 
 
 @router.post("/products/{product_id}/approve")
@@ -309,7 +324,19 @@ def update_product(
     )
     if not item:
         raise HTTPException(status_code=404, detail="Product not found")
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    updates = payload.model_dump(exclude_unset=True)
+    if "category_id" in updates:
+        target_category = db.scalar(
+            select(Category).where(
+                Category.id == updates["category_id"],
+                Category.organization_id == context.organization_id,
+            )
+        )
+        if not target_category:
+            raise HTTPException(status_code=404, detail="Category not found in organization")
+        if target_category.status != "Active":
+            raise HTTPException(status_code=409, detail="Products can only be assigned to active categories")
+    for field, value in updates.items():
         setattr(item, field, value)
     db.commit()
     db.refresh(item)

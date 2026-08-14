@@ -46,3 +46,32 @@ test('opens a complete create-product form', () => {
   expect(modal.getByLabelText(/^Stock on hand/)).toBeInTheDocument()
   expect(modal.getByText('Pending Review')).toBeInTheDocument()
 })
+
+test('offers a proper Excel export from products', () => {
+  renderApp('/products')
+
+  expect(screen.getAllByRole('button', { name: 'Export Excel' }).length).toBeGreaterThan(0)
+})
+
+test('selects products and asks for confirmation before bulk removal', () => {
+  const { container } = renderApp('/products')
+  const app = within(container)
+
+  fireEvent.click(app.getAllByRole('checkbox', { name: /Select product/ })[0])
+
+  fireEvent.click(app.getByRole('button', { name: 'Delete 1 selected' }))
+
+  expect(app.getByRole('dialog', { name: 'Remove 1 product?' })).toBeInTheDocument()
+  expect(app.getByText(/This permanently removes/)).toBeInTheDocument()
+})
+
+test('opens category correction in the product edit form', () => {
+  const { container } = renderApp('/products')
+  const app = within(container)
+
+  fireEvent.click(app.getAllByRole('button', { name: /^Edit product / })[0])
+
+  const modal = within(app.getByRole('dialog', { name: 'Edit product' }))
+  expect(modal.getByLabelText(/Category/)).not.toHaveValue('')
+  expect(modal.getByRole('option', { name: 'Electronics' })).toBeInTheDocument()
+})

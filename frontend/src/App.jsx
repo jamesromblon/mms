@@ -37,6 +37,7 @@ import {
   sellers,
 } from "./data";
 import { mutateMarketplace, useMarketplaceDashboard, useMarketplaceList } from "./api";
+import { exportProductsWorkbook } from "./lib/productExport";
 
 const cn = (...inputs) => twMerge(clsx(inputs));
 const icon = (name) => `bi ${name}`;
@@ -805,6 +806,83 @@ function ProductCreateModal({
   );
 }
 
+function ProductEditModal({
+  product,
+  categories: categoryOptions,
+  isCatalogLoading,
+  onClose,
+  onSave,
+}) {
+  const [name, setName] = useState(product.name);
+  const [categoryId, setCategoryId] = useState(
+    () => categoryOptions.find((category) => category.name === product.category)?.id || "",
+  );
+  const [error, setError] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    if (name.trim().length < 2) {
+      setError("Enter a product name with at least 2 characters.");
+      return;
+    }
+    if (!categoryId) {
+      setError("Select a product category.");
+      return;
+    }
+    setError("");
+    setIsSaving(true);
+    try {
+      await onSave({ name: name.trim(), category_id: categoryId });
+      onClose();
+    } catch (saveError) {
+      setError(saveError.response?.data?.detail || "Could not update this product. Try again.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <ModalShell title="Edit product" onClose={onClose} sizeClass="max-w-lg">
+      <p className="mt-1 text-xs leading-5 text-slate-500">
+        Keep the customer-facing name and marketplace category accurate.
+      </p>
+      <form className="mt-5 space-y-4" onSubmit={handleSubmit} noValidate>
+        <label className="block text-xs font-semibold text-slate-700" htmlFor="edit-product-name">
+          Product name <span className="text-rose-600">*</span>
+          <input
+            id="edit-product-name"
+            autoFocus
+            className="input mt-1.5"
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+          />
+        </label>
+        <label className="block text-xs font-semibold text-slate-700" htmlFor="edit-product-category">
+          Category <span className="text-rose-600">*</span>
+          <select
+            id="edit-product-category"
+            className="input mt-1.5"
+            disabled={isCatalogLoading || categoryOptions.length === 0}
+            value={categoryId}
+            onChange={(event) => setCategoryId(event.target.value)}
+          >
+            <option value="">{isCatalogLoading ? "Loading categories..." : "Select category"}</option>
+            {categoryOptions.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+          </select>
+        </label>
+        {error && <p className="rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700">{error}</p>}
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <button type="button" className="btn-secondary" onClick={onClose} disabled={isSaving}>Cancel</button>
+          <button type="submit" className="btn-primary" disabled={isSaving || isCatalogLoading || categoryOptions.length === 0}>
+            {isSaving ? "Saving..." : "Save changes"}
+          </button>
+        </div>
+      </form>
+    </ModalShell>
+  );
+}
+
 function DetailModal({ title, rows, onClose, actions }) {
   return (
     <ModalShell
@@ -853,23 +931,6 @@ function ConfirmModal({ title, message, onClose, onConfirm }) {
       </div>
     </ModalShell>
   );
-}
-
-function exportCsv(filename, headers, rows) {
-  const escapeValue = (value) =>
-    `"${String(value ?? "").replaceAll('"', '""')}"`;
-  const csv = [headers, ...rows]
-    .map((row) => row.map(escapeValue).join(","))
-    .join("\n");
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = filename;
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  URL.revokeObjectURL(url);
 }
 
 function Dashboard({ onToast }) {
@@ -1104,7 +1165,13 @@ function SellerPerformance({ onToast, dashboard }) {
 }
 
 function ProductsPage({ onToast }) {
-  const { items: sourceItems } = useMarketplaceList("products", products, {}, (item) => ({ ...item, resourceId: item.id, price: formatCurrency(item.price), updated: formatDate(item.updated) }));
+  const { items: sourceItems } = useMarketplaceList("products", products, {}, (item) => ({
+    ...item,
+    resourceId: item.id,
+    price: formatCurrency(item.price),
+    updatedAt: item.updated,
+    updated: formatDate(item.updated),
+  }));
   const { items: sourceSellerOptions, isLoading: sellersLoading } = useMarketplaceList(
     "sellers",
     sellers,
@@ -1127,10 +1194,13 @@ function ProductsPage({ onToast }) {
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("All Statuses");
   const [categoryFilter, setCategoryFilter] = useState("All Categories");
+  const [isExporting, setIsExporting] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [modal, setModal] = useState(null);
   const [details, setDetails] = useState(null);
   const [menuId, setMenuId] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [selectedProductIds, setSelectedProductIds] = useState(() => new Set());
   const queryClient = useQueryClient();
   const sellerOptions = useMemo(
     () => sourceSellerOptions.filter((item) => item.status === "Active"),
@@ -1139,6 +1209,13 @@ function ProductsPage({ onToast }) {
   const categoryOptions = useMemo(
     () => sourceCategoryOptions.filter((item) => item.status === "Active"),
     [sourceCategoryOptions],
+  );
+  const productCategories = useMemo(
+    () => Array.from(new Set([
+      ...categoryOptions.map((item) => item.name),
+      ...items.map((item) => item.category),
+    ])).sort(),
+    [categoryOptions, items],
   );
   const filtered = useMemo(
     () =>
@@ -1158,6 +1235,23 @@ function ProductsPage({ onToast }) {
       ),
     [items, query, tab, statusFilter, categoryFilter],
   );
+  const visibleProductIds = useMemo(
+    () => filtered.map((item) => item.resourceId || item.id),
+    [filtered],
+  );
+  const allVisibleProductsSelected = visibleProductIds.length > 0 && visibleProductIds.every(
+    (productId) => selectedProductIds.has(productId),
+  );
+  const selectedVisibleCount = visibleProductIds.filter(
+    (productId) => selectedProductIds.has(productId),
+  ).length;
+  useEffect(() => {
+    const visibleIds = new Set(visibleProductIds);
+    setSelectedProductIds((current) => {
+      const next = new Set([...current].filter((productId) => visibleIds.has(productId)));
+      return next.size === current.size ? current : next;
+    });
+  }, [visibleProductIds]);
   const productCategoryMix = useMemo(() => {
     const colors = ["bg-blue-600", "bg-emerald-600", "bg-amber-600", "bg-violet-500", "bg-rose-600", "bg-slate-500"];
     return Object.entries(items.reduce((counts, item) => ({ ...counts, [item.category]: (counts[item.category] || 0) + 1 }), {}))
@@ -1203,13 +1297,10 @@ function ProductsPage({ onToast }) {
     setMenuId(null);
     onToast(`${item.name} ${status === "Archived" ? "archived" : "restored"}`);
   };
-  const persistEditProduct = async (name) => {
-    try {
-      await mutateMarketplace("patch", `/products/${modal.item.resourceId || modal.item.id}`, { name });
-      await queryClient.invalidateQueries({ queryKey: ["marketplace", "products"] });
-      setModal(null);
-      onToast(`Product ${name} updated`);
-    } catch (error) { onToast(error.response?.data?.detail || "Could not update product"); }
+  const persistEditProduct = async (payload) => {
+    await mutateMarketplace("patch", `/products/${modal.item.resourceId || modal.item.id}`, payload);
+    await queryClient.invalidateQueries({ queryKey: ["marketplace", "products"] });
+    onToast(`Product ${payload.name} updated`);
   };
   const persistProductStatus = async (item, target) => {
     try {
@@ -1219,6 +1310,59 @@ function ProductsPage({ onToast }) {
       setMenuId(null);
       onToast(`Product status updated`);
     } catch (error) { onToast(error.response?.data?.detail || "Could not update product"); }
+  };
+  const toggleProductSelection = (item) => {
+    const productId = item.resourceId || item.id;
+    setSelectedProductIds((current) => {
+      const next = new Set(current);
+      if (next.has(productId)) next.delete(productId);
+      else next.add(productId);
+      return next;
+    });
+  };
+  const toggleAllVisibleProducts = () => {
+    setSelectedProductIds((current) => {
+      const next = new Set(current);
+      if (allVisibleProductsSelected) visibleProductIds.forEach((productId) => next.delete(productId));
+      else visibleProductIds.forEach((productId) => next.add(productId));
+      return next;
+    });
+  };
+  const persistDeleteProducts = async () => {
+    const productIds = deleteTarget.items.map((item) => item.resourceId || item.id);
+    try {
+      if (productIds.length === 1) {
+        await mutateMarketplace("delete", `/products/${productIds[0]}`);
+      } else {
+        await mutateMarketplace("post", "/products/bulk-delete", { product_ids: productIds });
+      }
+      await queryClient.invalidateQueries({ queryKey: ["marketplace", "products"] });
+      await queryClient.invalidateQueries({ queryKey: ["marketplace", "dashboard"] });
+      setSelectedProductIds(new Set());
+      setMenuId(null);
+      setDeleteTarget(null);
+      onToast(`${productIds.length} product${productIds.length === 1 ? "" : "s"} removed`);
+    } catch (error) {
+      onToast(error.response?.data?.detail || "Could not remove the selected products");
+    }
+  };
+  const exportProducts = async () => {
+    setIsExporting(true);
+    try {
+      await exportProductsWorkbook({
+        products: filtered,
+        filters: {
+          query,
+          status: statusFilter,
+          category: categoryFilter,
+        },
+      });
+      onToast(`${filtered.length} products exported to Excel`);
+    } catch (error) {
+      onToast("Could not create the Excel export");
+    } finally {
+      setIsExporting(false);
+    }
   };
   return (
     <>
@@ -1306,12 +1450,7 @@ function ProductsPage({ onToast }) {
             onChange={(event) => setCategoryFilter(event.target.value)}
           >
             <option>All Categories</option>
-            <option>Electronics</option>
-            <option>Home & Living</option>
-            <option>Food & Beverage</option>
-            <option>Tools</option>
-            <option>Fashion</option>
-            <option>Wellness</option>
+            {productCategories.map((category) => <option key={category}>{category}</option>)}
           </select>
           <button
             className={cn(
@@ -1325,34 +1464,21 @@ function ProductsPage({ onToast }) {
           </button>
           <button
             className="btn-secondary"
-            onClick={() => {
-              exportCsv(
-                "products.csv",
-                [
-                  "Product",
-                  "SKU",
-                  "Seller",
-                  "Category",
-                  "Price",
-                  "Stock",
-                  "Status",
-                ],
-                filtered.map((item) => [
-                  item.name,
-                  item.sku,
-                  item.seller,
-                  item.category,
-                  item.price,
-                  item.stock,
-                  item.status,
-                ]),
-              );
-              onToast(`${filtered.length} products exported`);
-            }}
+            disabled={isExporting}
+            onClick={exportProducts}
           >
             <Icon name="bi-download" />
-            Export
+            {isExporting ? "Preparing Excel..." : "Export Excel"}
           </button>
+          {selectedVisibleCount > 0 && (
+            <button
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-rose-600 px-3 text-xs font-semibold text-white transition hover:bg-rose-700 focus:outline-none focus:ring-2 focus:ring-rose-300"
+              onClick={() => setDeleteTarget({ items: filtered.filter((item) => selectedProductIds.has(item.resourceId || item.id)) })}
+            >
+              <Icon name="bi-trash3" />
+              Delete {selectedVisibleCount} selected
+            </button>
+          )}
         </Toolbar>
         {filtersOpen && (
           <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 bg-slate-50 px-4 py-3 text-xs text-slate-600">
@@ -1370,7 +1496,16 @@ function ProductsPage({ onToast }) {
           </div>
         )}
         <div className="hidden overflow-x-auto md:block">
-          <div className="grid min-w-[900px] grid-cols-[1.5fr_0.7fr_1.15fr_1fr_0.8fr_0.55fr_0.9fr_0.8fr_0.7fr]">
+          <div className="grid min-w-[980px] grid-cols-[0.38fr_1.5fr_0.7fr_1.15fr_1fr_0.8fr_0.55fr_0.9fr_0.8fr_0.9fr]">
+            <div className="table-head flex items-center justify-center">
+              <input
+                aria-label="Select all visible products"
+                checked={allVisibleProductsSelected}
+                className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                onChange={toggleAllVisibleProducts}
+                type="checkbox"
+              />
+            </div>
             {[
               "Product",
               "SKU",
@@ -1391,9 +1526,12 @@ function ProductsPage({ onToast }) {
                 key={item.id}
                 item={item}
                 menuOpen={menuId === item.id}
+                selected={selectedProductIds.has(item.resourceId || item.id)}
                 onView={() => setDetails(item)}
                 onEdit={() => setModal({ type: "edit", item })}
                 onMore={() => setMenuId(menuId === item.id ? null : item.id)}
+                onSelect={() => toggleProductSelection(item)}
+                onDelete={() => setDeleteTarget({ items: [item] })}
                 onApprove={() => persistProductStatus(item, "Active")}
                 onArchive={() =>
                   persistProductStatus(
@@ -1407,29 +1545,42 @@ function ProductsPage({ onToast }) {
           {filtered.length === 0 && <EmptyState />}
         </div>
         <div className="divide-y divide-slate-100 md:hidden">
+          <label className="flex items-center gap-2 border-b border-slate-100 px-4 py-3 text-xs font-medium text-slate-600">
+            <input
+              aria-label="Select all visible products"
+              checked={allVisibleProductsSelected}
+              className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+              onChange={toggleAllVisibleProducts}
+              type="checkbox"
+            />
+            Select all visible
+          </label>
           {filtered.map((item) => (
             <div key={item.id} className="p-4">
-              <div className="flex items-start justify-between">
-                <div>
-                  <div className="font-semibold text-slate-800">
-                    {item.name}
-                  </div>
-                  <div className="mt-1 text-xs text-slate-500">
-                    {item.seller} · {item.category}
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex min-w-0 items-start gap-3">
+                  <input
+                    aria-label={`Select product ${item.name}`}
+                    checked={selectedProductIds.has(item.resourceId || item.id)}
+                    className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                    onChange={() => toggleProductSelection(item)}
+                    type="checkbox"
+                  />
+                  <div className="min-w-0">
+                    <div className="font-semibold text-slate-800">{item.name}</div>
+                    <div className="mt-1 text-xs text-slate-500">
+                      {item.seller} · {item.category}
+                    </div>
                   </div>
                 </div>
                 <StatusBadge status={item.status} />
               </div>
-              <div className="mt-3 flex justify-between text-xs text-slate-500">
-                <span>
-                  {item.price} · Stock {item.stock}
-                </span>
-                <button
-                  className="text-blue-600"
-                  onClick={() => setDetails(item)}
-                >
-                  View
-                </button>
+              <div className="mt-3 flex items-center justify-between gap-3 text-xs text-slate-500">
+                <span>{item.price} · Stock {item.stock}</span>
+                <div className="flex shrink-0 items-center gap-3">
+                  <button className="text-blue-600" onClick={() => setDetails(item)}>View</button>
+                  <button className="text-rose-600" onClick={() => setDeleteTarget({ items: [item] })}>Remove</button>
+                </div>
               </div>
             </div>
           ))}
@@ -1446,10 +1597,10 @@ function ProductsPage({ onToast }) {
         />
       )}
       {modal?.type === "edit" && (
-        <ActionModal
-          title="Edit product"
-          label="Product name"
-          initialValue={modal.item.name}
+        <ProductEditModal
+          product={modal.item}
+          categories={categoryOptions}
+          isCatalogLoading={categoriesLoading}
           onClose={() => setModal(null)}
           onSave={persistEditProduct}
         />
@@ -1468,6 +1619,14 @@ function ProductsPage({ onToast }) {
           ]}
         />
       )}
+      {deleteTarget && (
+        <ConfirmModal
+          title={`Remove ${deleteTarget.items.length} product${deleteTarget.items.length === 1 ? "" : "s"}?`}
+          message={`This permanently removes ${deleteTarget.items.length === 1 ? deleteTarget.items[0].name : `${deleteTarget.items.length} selected products`} from the marketplace catalog. This action cannot be undone.`}
+          onClose={() => setDeleteTarget(null)}
+          onConfirm={persistDeleteProducts}
+        />
+      )}
     </>
   );
 }
@@ -1475,14 +1634,26 @@ function ProductsPage({ onToast }) {
 function ProductRow({
   item,
   menuOpen,
+  selected,
   onView,
   onEdit,
   onMore,
+  onSelect,
+  onDelete,
   onApprove,
   onArchive,
 }) {
   return (
     <>
+      <div className="flex items-center justify-center px-3 py-3">
+        <input
+          aria-label={`Select product ${item.name}`}
+          checked={selected}
+          className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+          onChange={onSelect}
+          type="checkbox"
+        />
+      </div>
       <div className="flex items-center gap-2 px-4 py-3 text-xs font-semibold text-slate-700">
         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-400">
           <Icon name="bi-image" />
@@ -1509,6 +1680,13 @@ function ProductRow({
         </button>
         <button aria-label={`Edit product ${item.name}`} onClick={onEdit}>
           <Icon name="bi-pencil" />
+        </button>
+        <button
+          aria-label={`Remove product ${item.name}`}
+          className="text-rose-500 hover:text-rose-700"
+          onClick={onDelete}
+        >
+          <Icon name="bi-trash3" />
         </button>
         <button
           aria-label={`More product actions for ${item.name}`}

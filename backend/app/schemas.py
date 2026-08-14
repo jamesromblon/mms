@@ -5,7 +5,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Generic, TypeVar
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 T = TypeVar("T")
 
@@ -44,8 +44,20 @@ class ProductCreate(BaseModel):
 class ProductUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=2, max_length=200)
     sku: str | None = Field(default=None, min_length=2, max_length=80)
+    category_id: uuid.UUID | None = None
     price: Decimal | None = Field(default=None, gt=0)
     stock: int | None = Field(default=None, ge=0)
+
+
+class ProductBulkDelete(BaseModel):
+    product_ids: list[uuid.UUID] = Field(min_length=1, max_length=100)
+
+    @field_validator("product_ids")
+    @classmethod
+    def product_ids_must_be_unique(cls, product_ids: list[uuid.UUID]) -> list[uuid.UUID]:
+        if len(set(product_ids)) != len(product_ids):
+            raise ValueError("Product IDs must be unique")
+        return product_ids
 
 
 class OrderRead(BaseModel):

@@ -6,7 +6,7 @@ from pydantic import ValidationError
 import pytest
 
 from app.main import app
-from app.schemas import ProductCreate
+from app.schemas import ProductBulkDelete, ProductCreate
 
 client = TestClient(app)
 
@@ -56,3 +56,10 @@ def test_product_create_payload_rejects_prices_with_more_than_two_decimals() -> 
             price=Decimal("1290.999"),
             stock=0,
         )
+
+
+def test_product_bulk_delete_payload_rejects_duplicate_ids() -> None:
+    product_id = uuid.uuid4()
+
+    with pytest.raises(ValidationError):
+        ProductBulkDelete(product_ids=[product_id, product_id])
