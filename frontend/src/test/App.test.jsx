@@ -4,7 +4,8 @@ import { BrowserRouter } from 'react-router-dom'
 import { expect, test } from 'vitest'
 import App from '../App'
 
-function renderApp() {
+function renderApp(path = '/dashboard') {
+  window.history.pushState({}, '', path)
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(<QueryClientProvider client={queryClient}><BrowserRouter><App /></BrowserRouter></QueryClientProvider>)
 }
@@ -27,4 +28,21 @@ test('compacts and expands the desktop sidebar control', () => {
     'aria-pressed',
     'true',
   )
+})
+
+test('opens a complete create-product form', () => {
+  renderApp('/products')
+
+  fireEvent.click(screen.getByRole('button', { name: 'New Product' }))
+
+  const dialog = screen.getByRole('dialog', { name: 'New product' })
+  const modal = within(dialog)
+  expect(dialog).toBeInTheDocument()
+  expect(modal.getByLabelText(/Product name/)).toBeInTheDocument()
+  expect(modal.getByLabelText(/^SKU/)).toBeInTheDocument()
+  expect(modal.getByLabelText(/^Unit price/)).toBeInTheDocument()
+  expect(modal.getByLabelText(/^Seller/)).toBeInTheDocument()
+  expect(modal.getByLabelText(/^Category/)).toBeInTheDocument()
+  expect(modal.getByLabelText(/^Stock on hand/)).toBeInTheDocument()
+  expect(modal.getByText('Pending Review')).toBeInTheDocument()
 })

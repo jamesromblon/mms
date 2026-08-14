@@ -549,7 +549,7 @@ function EmptyState({
   );
 }
 
-function ModalShell({ title, onClose, children, footer }) {
+function ModalShell({ title, onClose, children, footer, sizeClass = "max-w-md" }) {
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4"
@@ -559,7 +559,10 @@ function ModalShell({ title, onClose, children, footer }) {
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className="w-full max-w-md rounded-xl bg-white p-5 shadow-2xl"
+        className={cn(
+          "max-h-[calc(100dvh-2rem)] w-full overflow-y-auto rounded-xl bg-white p-5 shadow-2xl sm:p-6",
+          sizeClass,
+        )}
       >
         <div className="flex items-center justify-between">
           <h2 className="text-base font-bold text-ink">{title}</h2>
@@ -611,6 +614,193 @@ function ActionModal({
           Save
         </button>
       </div>
+    </ModalShell>
+  );
+}
+
+function ProductCreateModal({
+  sellers: sellerOptions,
+  categories: categoryOptions,
+  isCatalogLoading,
+  onClose,
+  onSave,
+}) {
+  const [form, setForm] = useState({
+    name: "",
+    sku: "",
+    sellerId: "",
+    categoryId: "",
+    price: "",
+    stock: "",
+  });
+  const [errors, setErrors] = useState({});
+  const [submitError, setSubmitError] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+  const hasCatalogOptions = sellerOptions.length > 0 && categoryOptions.length > 0;
+
+  const updateField = (field, value) => {
+    setForm((current) => ({ ...current, [field]: value }));
+    setErrors((current) => ({ ...current, [field]: undefined }));
+    setSubmitError("");
+  };
+
+  const validate = () => {
+    const nextErrors = {};
+    if (form.name.trim().length < 2) nextErrors.name = "Enter a product name with at least 2 characters.";
+    if (form.sku.trim().length < 2) nextErrors.sku = "Enter a SKU with at least 2 characters.";
+    if (!form.sellerId) nextErrors.sellerId = "Select the seller that owns this listing.";
+    if (!form.categoryId) nextErrors.categoryId = "Select a product category.";
+    const price = Number(form.price);
+    if (!Number.isFinite(price) || price <= 0) nextErrors.price = "Enter a unit price greater than zero.";
+    if (!/^\d+$/.test(form.stock)) nextErrors.stock = "Enter a whole-number stock quantity of zero or more.";
+    setErrors(nextErrors);
+    return Object.keys(nextErrors).length === 0;
+  };
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    if (isCatalogLoading || !hasCatalogOptions || !validate()) return;
+    setIsSaving(true);
+    try {
+      await onSave({
+        name: form.name.trim(),
+        sku: form.sku.trim().toUpperCase(),
+        seller_id: form.sellerId,
+        category_id: form.categoryId,
+        price: Number(form.price),
+        stock: Number(form.stock),
+      });
+      onClose();
+    } catch (error) {
+      setSubmitError(error.response?.data?.detail || "Could not save this product. Try again.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const fieldClass = (field) =>
+    cn("input mt-1.5", errors[field] && "border-rose-400 focus:border-rose-500 focus:ring-rose-200");
+
+  return (
+    <ModalShell title="New product" onClose={onClose} sizeClass="max-w-2xl">
+      <p className="mt-1 text-xs leading-5 text-slate-500">
+        Add the listing details required for the marketplace catalog. New listings are submitted for review.
+      </p>
+      <form className="mt-5" onSubmit={handleSubmit} noValidate>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className="block text-xs font-semibold text-slate-700 sm:col-span-2" htmlFor="product-name">
+            Product name <span className="text-rose-600">*</span>
+            <input
+              id="product-name"
+              autoFocus
+              className={fieldClass("name")}
+              placeholder="e.g. Bluetooth Mechanical Keyboard"
+              value={form.name}
+              onChange={(event) => updateField("name", event.target.value)}
+            />
+            <span className="mt-1 block text-[11px] font-normal text-slate-500">Use the customer-facing listing title.</span>
+            {errors.name && <span className="mt-1 block text-[11px] font-medium text-rose-600">{errors.name}</span>}
+          </label>
+          <label className="block text-xs font-semibold text-slate-700" htmlFor="product-sku">
+            SKU <span className="text-rose-600">*</span>
+            <input
+              id="product-sku"
+              className={fieldClass("sku")}
+              placeholder="e.g. NSG-KEY-104"
+              value={form.sku}
+              onChange={(event) => updateField("sku", event.target.value.toUpperCase())}
+            />
+            <span className="mt-1 block text-[11px] font-normal text-slate-500">Must be unique within this marketplace.</span>
+            {errors.sku && <span className="mt-1 block text-[11px] font-medium text-rose-600">{errors.sku}</span>}
+          </label>
+          <label className="block text-xs font-semibold text-slate-700" htmlFor="product-price">
+            Unit price (PHP) <span className="text-rose-600">*</span>
+            <input
+              id="product-price"
+              className={fieldClass("price")}
+              inputMode="decimal"
+              min="0.01"
+              step="0.01"
+              type="number"
+              placeholder="0.00"
+              value={form.price}
+              onChange={(event) => updateField("price", event.target.value)}
+            />
+            <span className="mt-1 block text-[11px] font-normal text-slate-500">Enter the full customer price before fees.</span>
+            {errors.price && <span className="mt-1 block text-[11px] font-medium text-rose-600">{errors.price}</span>}
+          </label>
+          <label className="block text-xs font-semibold text-slate-700" htmlFor="product-seller">
+            Seller <span className="text-rose-600">*</span>
+            <select
+              id="product-seller"
+              className={fieldClass("sellerId")}
+              disabled={isCatalogLoading || sellerOptions.length === 0}
+              value={form.sellerId}
+              onChange={(event) => updateField("sellerId", event.target.value)}
+            >
+              <option value="">{isCatalogLoading ? "Loading sellers..." : "Select seller"}</option>
+              {sellerOptions.map((seller) => <option key={seller.id} value={seller.id}>{seller.name}</option>)}
+            </select>
+            <span className="mt-1 block text-[11px] font-normal text-slate-500">Only active seller accounts can receive listings.</span>
+            {errors.sellerId && <span className="mt-1 block text-[11px] font-medium text-rose-600">{errors.sellerId}</span>}
+          </label>
+          <label className="block text-xs font-semibold text-slate-700" htmlFor="product-category">
+            Category <span className="text-rose-600">*</span>
+            <select
+              id="product-category"
+              className={fieldClass("categoryId")}
+              disabled={isCatalogLoading || categoryOptions.length === 0}
+              value={form.categoryId}
+              onChange={(event) => updateField("categoryId", event.target.value)}
+            >
+              <option value="">{isCatalogLoading ? "Loading categories..." : "Select category"}</option>
+              {categoryOptions.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+            </select>
+            <span className="mt-1 block text-[11px] font-normal text-slate-500">Use an active marketplace category.</span>
+            {errors.categoryId && <span className="mt-1 block text-[11px] font-medium text-rose-600">{errors.categoryId}</span>}
+          </label>
+          <label className="block text-xs font-semibold text-slate-700" htmlFor="product-stock">
+            Stock on hand <span className="text-rose-600">*</span>
+            <input
+              id="product-stock"
+              className={fieldClass("stock")}
+              inputMode="numeric"
+              min="0"
+              step="1"
+              type="number"
+              placeholder="0"
+              value={form.stock}
+              onChange={(event) => updateField("stock", event.target.value)}
+            />
+            <span className="mt-1 block text-[11px] font-normal text-slate-500">Use zero when the listing is temporarily out of stock.</span>
+            {errors.stock && <span className="mt-1 block text-[11px] font-medium text-rose-600">{errors.stock}</span>}
+          </label>
+        </div>
+        <div className="mt-5 grid gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs sm:grid-cols-2">
+          <div>
+            <span className="font-semibold text-slate-700">Initial status</span>
+            <p className="mt-1 text-slate-500">Pending Review</p>
+          </div>
+          <div>
+            <span className="font-semibold text-slate-700">Updated</span>
+            <p className="mt-1 text-slate-500">Set automatically when saved</p>
+          </div>
+        </div>
+        {!isCatalogLoading && !hasCatalogOptions && (
+          <p className="mt-4 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">
+            Add at least one active seller and category before creating a product.
+          </p>
+        )}
+        {submitError && <p className="mt-4 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700">{submitError}</p>}
+        <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <button type="button" className="btn-secondary" onClick={onClose} disabled={isSaving}>
+            Cancel
+          </button>
+          <button type="submit" className="btn-primary" disabled={isSaving || isCatalogLoading || !hasCatalogOptions}>
+            {isSaving ? "Saving..." : "Create product"}
+          </button>
+        </div>
+      </form>
     </ModalShell>
   );
 }
@@ -915,6 +1105,22 @@ function SellerPerformance({ onToast, dashboard }) {
 
 function ProductsPage({ onToast }) {
   const { items: sourceItems } = useMarketplaceList("products", products, {}, (item) => ({ ...item, resourceId: item.id, price: formatCurrency(item.price), updated: formatDate(item.updated) }));
+  const { items: sourceSellerOptions, isLoading: sellersLoading } = useMarketplaceList(
+    "sellers",
+    sellers,
+    { status: "Active", page_size: 100 },
+    (item) => ({
+      id: item.id,
+      name: item.business_name || item.business,
+      status: item.status,
+    }),
+  );
+  const { items: sourceCategoryOptions, isLoading: categoriesLoading } = useMarketplaceList(
+    "categories",
+    categories,
+    { page_size: 100 },
+    (item) => ({ id: item.id || item.slug, name: item.name, status: item.status }),
+  );
   const [items, setItems] = useState(sourceItems);
   useEffect(() => setItems(sourceItems), [sourceItems]);
   const [tab, setTab] = useState("All Products");
@@ -926,6 +1132,14 @@ function ProductsPage({ onToast }) {
   const [details, setDetails] = useState(null);
   const [menuId, setMenuId] = useState(null);
   const queryClient = useQueryClient();
+  const sellerOptions = useMemo(
+    () => sourceSellerOptions.filter((item) => item.status === "Active"),
+    [sourceSellerOptions],
+  );
+  const categoryOptions = useMemo(
+    () => sourceCategoryOptions.filter((item) => item.status === "Active"),
+    [sourceCategoryOptions],
+  );
   const filtered = useMemo(
     () =>
       items.filter(
@@ -967,13 +1181,11 @@ function ProductsPage({ onToast }) {
     setModal(null);
     onToast(`Product “${name}” created for review`);
   };
-  const persistCreateProduct = async (name) => {
-    try {
-      await mutateMarketplace("post", "/products/quick", { name });
-      await queryClient.invalidateQueries({ queryKey: ["marketplace", "products"] });
-      setModal(null);
-      onToast(`Product ${name} created for review`);
-    } catch (error) { onToast(error.response?.data?.detail || "Could not create product"); }
+  const persistCreateProduct = async (payload) => {
+    await mutateMarketplace("post", "/products", payload);
+    await queryClient.invalidateQueries({ queryKey: ["marketplace", "products"] });
+    await queryClient.invalidateQueries({ queryKey: ["marketplace", "dashboard"] });
+    onToast(`Product ${payload.name} created for review`);
   };
   const editProduct = (name) => {
     setItems((current) =>
@@ -1225,10 +1437,10 @@ function ProductsPage({ onToast }) {
         </div>
       </div>
       {modal?.type === "create" && (
-        <ActionModal
-          title="Create product"
-          label="Product name"
-          placeholder="e.g. Wireless Keyboard"
+        <ProductCreateModal
+          sellers={sellerOptions}
+          categories={categoryOptions}
+          isCatalogLoading={sellersLoading || categoriesLoading}
           onClose={() => setModal(null)}
           onSave={persistCreateProduct}
         />

@@ -69,13 +69,14 @@ def dashboard(
             Order.organization_id == context.organization_id, Order.status != "Cancelled"
         )
     ) or Decimal("0")
-    status_counts = dict(
-        db.execute(
+    status_counts: dict[str, int] = {
+        str(order_status): int(count)
+        for order_status, count in db.execute(
             select(Order.status, func.count(Order.id))
             .where(Order.organization_id == context.organization_id)
             .group_by(Order.status)
         ).all()
-    )
+    }
     total_orders = sum(status_counts.values()) or 1
     order_rows = db.execute(
         select(Order.placed_at, Order.total).where(
@@ -87,7 +88,9 @@ def dashboard(
         if placed_at:
             key = placed_at.date().isoformat()
             gmv_by_day[key] = gmv_by_day.get(key, Decimal("0")) + total
-    daily_gmv = [{"date": day, "value": float(amount)} for day, amount in gmv_by_day.items()]
+    daily_gmv: list[dict[str, float | str]] = [
+        {"date": day, "value": float(amount)} for day, amount in gmv_by_day.items()
+    ]
     active_listings = db.scalar(
         select(func.count(Product.id)).where(Product.organization_id == context.organization_id, Product.status == "Active")
     ) or 0
@@ -187,6 +190,7 @@ def create_product(
     db: Session = Depends(get_db),
     context: AuthContext = Depends(require_roles("Catalog Moderator")),
 ) -> ProductRead:
+    normalized_sku = payload.sku.upper()
     seller = db.scalar(
         select(Seller).where(
             Seller.id == payload.seller_id, Seller.organization_id == context.organization_id
@@ -199,12 +203,22 @@ def create_product(
     )
     if not seller or not category:
         raise HTTPException(status_code=404, detail="Seller or category not found in organization")
+    if seller.status != "Active" or category.status != "Active":
+        raise HTTPException(status_code=409, detail="Products can only be assigned to active sellers and categories")
+    duplicate_sku = db.scalar(
+        select(Product.id).where(
+            Product.organization_id == context.organization_id,
+            func.lower(Product.sku) == normalized_sku.lower(),
+        )
+    )
+    if duplicate_sku:
+        raise HTTPException(status_code=409, detail="SKU already exists in this marketplace")
     item = Product(
         organization_id=context.organization_id,
         seller_id=payload.seller_id,
         category_id=payload.category_id,
         name=payload.name,
-        sku=payload.sku,
+        sku=normalized_sku,
         price=payload.price,
         stock=payload.stock,
     )

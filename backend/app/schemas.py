@@ -31,11 +31,13 @@ class ProductRead(BaseModel):
 
 
 class ProductCreate(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
     name: str = Field(min_length=2, max_length=200)
     sku: str = Field(min_length=2, max_length=80)
     seller_id: uuid.UUID
     category_id: uuid.UUID
-    price: Decimal = Field(gt=0)
+    price: Decimal = Field(gt=0, max_digits=12, decimal_places=2)
     stock: int = Field(ge=0)
 
 
