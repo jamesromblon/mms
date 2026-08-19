@@ -217,18 +217,27 @@ function Topbar({ compact, onMenu, onToast }) {
   return (
     <header
       className={cn(
-        "fixed inset-x-0 top-0 z-20 h-[101px] bg-navy text-white transition-[left] duration-200 lg:left-52",
+        "fixed inset-x-0 top-0 z-20 h-[72px] bg-navy text-white transition-[left] duration-200 lg:h-[101px] lg:left-52",
         compact && "lg:left-[4.5rem]",
       )}
     >
-      <div className="flex h-full items-center justify-end gap-4 px-4 sm:px-6 lg:px-7">
+      <div className="flex h-full items-center justify-between gap-3 px-4 sm:px-6 lg:justify-end lg:gap-4 lg:px-7">
         <button
           aria-label="Open navigation"
-          className="mr-auto rounded-lg p-2 text-slate-300 hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-blue-400 lg:hidden"
+          className="rounded-lg p-2 text-slate-300 hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-blue-400 lg:hidden"
           onClick={onMenu}
         >
           <Icon name="bi-list" />
         </button>
+        <div className="mr-auto flex min-w-0 items-center gap-2 lg:hidden">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-600 text-sm text-white">
+            <Icon name="bi-shop" />
+          </div>
+          <div className="min-w-0">
+            <div className="truncate text-sm font-semibold text-white">ARGO</div>
+            <div className="truncate text-[10px] font-medium text-slate-400">Marketplace MMS</div>
+          </div>
+        </div>
         <div className="flex items-center gap-2 sm:gap-4">
           <div className="relative">
             <button
@@ -355,7 +364,7 @@ function Layout({ children, toast, onToast }) {
       />
       <main
         className={cn(
-          "min-h-screen pt-[101px] transition-[margin] duration-200 lg:ml-52",
+          "min-h-screen pt-[72px] transition-[margin] duration-200 lg:ml-52 lg:pt-[101px]",
           sidebarCompact && "lg:ml-[4.5rem]",
         )}
       >
@@ -385,16 +394,16 @@ function Layout({ children, toast, onToast }) {
 
 function PageHeader({ title, subtitle, action, children }) {
   return (
-    <div className="mb-5 flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
+    <div className="mb-4 flex flex-col justify-between gap-3 sm:mb-5 sm:flex-row sm:items-start sm:gap-4">
       <div>
         <h1 className="text-xl font-bold tracking-tight text-ink sm:text-[22px]">
           {title}
         </h1>
         <p className="mt-1 text-xs text-slate-500">{subtitle}</p>
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
         {children}
-        {action}
+        {action && <div className="w-full sm:w-auto">{action}</div>}
       </div>
     </div>
   );
@@ -458,7 +467,7 @@ function MetricCard({
 
 function Tabs({ items, active, onChange }) {
   return (
-    <div className="inline-flex max-w-full overflow-hidden rounded-lg border border-slate-200 bg-white p-0.5">
+    <div className="flex max-w-full overflow-x-auto rounded-lg border border-slate-200 bg-white p-0.5 sm:inline-flex">
       {items.map((item) => {
         const value = typeof item === "string" ? item : item.value;
         const label = typeof item === "string" ? item : item.label;
@@ -470,7 +479,7 @@ function Tabs({ items, active, onChange }) {
             aria-pressed={active === value}
             onClick={() => onChange(value)}
             className={cn(
-              "whitespace-nowrap rounded-md px-3.5 py-2 text-xs font-medium text-slate-500",
+              "shrink-0 whitespace-nowrap rounded-md px-3.5 py-2 text-xs font-medium text-slate-500",
               active === value
                 ? "bg-slate-50 text-slate-800 shadow-sm"
                 : "hover:text-slate-800",
@@ -517,8 +526,8 @@ function StatusBadge({ status }) {
 
 function Toolbar({ placeholder, query, setQuery, children }) {
   return (
-    <div className="flex flex-col gap-2 border-b border-slate-100 p-4 sm:flex-row sm:items-center">
-      <div className="relative min-w-0 flex-1">
+    <div className="flex flex-col gap-2 border-b border-slate-100 p-3 sm:flex-row sm:flex-wrap sm:items-center sm:p-4">
+      <div className="relative min-w-0 flex-1 sm:min-w-[220px]">
         <Icon
           name="bi-search"
           className="absolute left-3 top-3 text-slate-400"
@@ -1495,7 +1504,7 @@ function ProductsPage({ onToast }) {
             </button>
           </div>
         )}
-        <div className="hidden overflow-x-auto md:block">
+        <div className="hidden overflow-x-auto lg:block">
           <div className="grid min-w-[980px] grid-cols-[0.38fr_1.5fr_0.7fr_1.15fr_1fr_0.8fr_0.55fr_0.9fr_0.8fr_0.9fr]">
             <div className="table-head flex items-center justify-center">
               <input
@@ -1544,7 +1553,7 @@ function ProductsPage({ onToast }) {
           </div>
           {filtered.length === 0 && <EmptyState />}
         </div>
-        <div className="divide-y divide-slate-100 md:hidden">
+        <div className="divide-y divide-slate-100 lg:hidden">
           <label className="flex items-center gap-2 border-b border-slate-100 px-4 py-3 text-xs font-medium text-slate-600">
             <input
               aria-label="Select all visible products"
@@ -1899,7 +1908,7 @@ function OrdersPage({ onToast }) {
             </button>
           </div>
         )}
-        <div className="hidden overflow-x-auto md:block">
+        <div className="hidden overflow-x-auto lg:block">
           <div className="grid min-w-[800px] grid-cols-[1fr_1.2fr_0.55fr_1fr_0.9fr_0.9fr_0.6fr]">
             {[
               "Order ID",
@@ -1955,7 +1964,7 @@ function OrdersPage({ onToast }) {
           </div>
           {filtered.length === 0 && <EmptyState />}
         </div>
-        <div className="divide-y divide-slate-100 md:hidden">
+        <div className="divide-y divide-slate-100 lg:hidden">
           {filtered.map((item) => (
             <div className="p-4" key={item.id}>
               <div className="flex justify-between">
@@ -2138,7 +2147,7 @@ function SellersPage({ onToast }) {
               </button>
             </div>
           )}
-          <div className="overflow-x-auto">
+          <div className="hidden overflow-x-auto lg:block">
             <div className="grid min-w-[800px] grid-cols-[1.5fr_1fr_0.7fr_0.8fr_0.8fr_0.9fr_0.6fr]">
               {[
                 "Business",
@@ -2195,6 +2204,42 @@ function SellersPage({ onToast }) {
                 </Fragment>
               ))}
             </div>
+            {pageItems.length === 0 && (
+              <EmptyState
+                title="No sellers on this page"
+                text="Use page 1 while the mock dataset is loaded, or connect the API for the full seller directory."
+              />
+            )}
+          </div>
+          <div className="divide-y divide-slate-100 lg:hidden">
+            {pageItems.map((item) => (
+              <div key={item.id} className="p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-semibold text-slate-800">{item.business}</div>
+                    <div className="mt-1 text-xs text-slate-500">{item.owner}</div>
+                  </div>
+                  <StatusBadge status={item.status} />
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-3 text-xs">
+                  <div>
+                    <div className="text-slate-400">Commission</div>
+                    <div className="mt-1 font-medium text-slate-700">{item.commission}</div>
+                  </div>
+                  <div>
+                    <div className="text-slate-400">Rating</div>
+                    <div className="mt-1 font-medium text-amber-600">{item.rating} <Icon name="bi-star-fill" /></div>
+                  </div>
+                  <div>
+                    <div className="text-slate-400">Joined</div>
+                    <div className="mt-1 font-medium text-slate-700">{item.joined}</div>
+                  </div>
+                  <div className="flex items-end justify-end">
+                    <button onClick={() => setDetails(item)} className="btn-secondary h-9 px-3 text-xs">View seller</button>
+                  </div>
+                </div>
+              </div>
+            ))}
             {pageItems.length === 0 && (
               <EmptyState
                 title="No sellers on this page"
@@ -2319,7 +2364,7 @@ function Applications({ items, onSearch, onReview }) {
           onSearch(value);
         }}
       />
-      <div className="grid grid-cols-[1.5fr_1fr_0.8fr_0.6fr]">
+      <div className="hidden grid-cols-[1.5fr_1fr_0.8fr_0.6fr] lg:grid">
         {["Business", "Owner", "Applied", "Actions"].map((heading) => (
           <div key={heading} className="table-head">
             {heading}
@@ -2343,6 +2388,20 @@ function Applications({ items, onSearch, onReview }) {
               </button>
             </div>
           </Fragment>
+        ))}
+      </div>
+      <div className="divide-y divide-slate-100 lg:hidden">
+        {filtered.map((item) => (
+          <div key={item.business} className="p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="truncate text-sm font-semibold text-slate-800">{item.business}</div>
+                <div className="mt-1 text-xs text-slate-500">{item.owner}</div>
+              </div>
+              <span className="shrink-0 text-xs text-slate-500">{item.applied}</span>
+            </div>
+            <button onClick={() => onReview(item)} className="btn-secondary mt-3 h-9 w-full text-xs">Review application</button>
+          </div>
         ))}
       </div>
       {filtered.length === 0 && <EmptyState title="No applications found" />}
@@ -2511,7 +2570,8 @@ function Stars({ value }) {
 }
 function PublishedReviews({ items, onView, onFlag }) {
   return (
-    <div className="overflow-x-auto">
+    <div>
+      <div className="hidden overflow-x-auto lg:block">
       <div className="grid min-w-[800px] grid-cols-[1.1fr_0.8fr_0.7fr_1.5fr_0.8fr_0.5fr]">
         {["Product", "Buyer", "Rating", "Comment", "Submitted", "Actions"].map(
           (heading) => (
@@ -2552,13 +2612,33 @@ function PublishedReviews({ items, onView, onFlag }) {
           </Fragment>
         ))}
       </div>
+      </div>
+      <div className="divide-y divide-slate-100 lg:hidden">
+        {items.map((item) => (
+          <div key={item.id} className="p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="truncate text-sm font-semibold text-slate-800">{item.product}</div>
+                <div className="mt-1 text-xs text-slate-500">{item.buyer} · {item.submitted}</div>
+              </div>
+              <Stars value={item.rating} />
+            </div>
+            <p className="mt-3 text-xs leading-5 text-slate-600">“{item.comment}”</p>
+            <div className="mt-3 flex gap-2">
+              <button aria-label={`View review for ${item.product}`} onClick={() => onView(item)} className="btn-secondary h-9 flex-1 text-xs">View</button>
+              <button aria-label={`Flag review for ${item.product}`} onClick={() => onFlag(item)} className="inline-flex h-9 flex-1 items-center justify-center gap-2 rounded-lg bg-amber-50 px-3 text-xs font-semibold text-amber-700">Flag</button>
+            </div>
+          </div>
+        ))}
+      </div>
       {items.length === 0 && <EmptyState />}
     </div>
   );
 }
 function FlaggedReviews({ items, onView, onRestore, onRemove }) {
   return (
-    <div className="overflow-x-auto">
+    <div>
+      <div className="hidden overflow-x-auto lg:block">
       <div className="grid min-w-[760px] grid-cols-[1.2fr_0.8fr_0.6fr_1.5fr_0.8fr_0.9fr]">
         {[
           "Product",
@@ -2609,6 +2689,26 @@ function FlaggedReviews({ items, onView, onRestore, onRemove }) {
               </button>
             </div>
           </Fragment>
+        ))}
+      </div>
+      </div>
+      <div className="divide-y divide-slate-100 lg:hidden">
+        {items.map((item) => (
+          <div key={item.id} className="p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="truncate text-sm font-semibold text-slate-800">{item.product}</div>
+                <div className="mt-1 text-xs text-slate-500">{item.buyer} · {item.submitted}</div>
+              </div>
+              <Stars value={item.rating} />
+            </div>
+            <div className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">{item.reason}</div>
+            <div className="mt-3 grid grid-cols-3 gap-2">
+              <button aria-label={`View flagged review for ${item.product}`} onClick={() => onView(item)} className="btn-secondary h-9 px-2 text-xs">View</button>
+              <button onClick={() => onRestore(item)} className="btn-secondary h-9 px-2 text-xs">Restore</button>
+              <button onClick={() => onRemove(item)} className="inline-flex h-9 items-center justify-center rounded-lg bg-rose-600 px-2 text-xs font-semibold text-white">Remove</button>
+            </div>
+          </div>
         ))}
       </div>
       {items.length === 0 && (
@@ -2748,7 +2848,8 @@ function DisputesPage({ onToast }) {
           )}
         </Toolbar>
         {tab === "Open" ? (
-          <div className="overflow-x-auto">
+          <div>
+            <div className="hidden overflow-x-auto lg:block">
             <div className="grid min-w-[900px] grid-cols-[0.7fr_0.7fr_1fr_1.2fr_1.2fr_0.8fr_1fr]">
               {[
                 "Dispute",
@@ -2801,9 +2902,33 @@ function DisputesPage({ onToast }) {
               ))}
             </div>
             {visibleOpen.length === 0 && <EmptyState />}
+            </div>
+            <div className="divide-y divide-slate-100 lg:hidden">
+              {visibleOpen.map((item) => (
+                <div key={item.id} className="p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold text-slate-800">{item.id}</div>
+                      <div className="mt-1 text-xs text-slate-500">{item.order} · {item.seller}</div>
+                    </div>
+                    <StatusBadge status={item.status} />
+                  </div>
+                  <div className="mt-3 grid gap-2 text-xs">
+                    <div><span className="text-slate-400">Raised by</span><div className="mt-1 font-medium text-slate-700">{item.raisedBy}</div></div>
+                    <div><span className="text-slate-400">Reason</span><div className="mt-1 text-slate-600">{item.reason}</div></div>
+                  </div>
+                  <div className="mt-3 grid grid-cols-2 gap-2">
+                    <button onClick={() => setDetails(item)} className="btn-secondary h-9 text-xs">View details</button>
+                    <button onClick={() => setResolveItem(item)} className="btn-primary h-9 text-xs">Resolve</button>
+                  </div>
+                </div>
+              ))}
+              {visibleOpen.length === 0 && <EmptyState />}
+            </div>
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <div>
+            <div className="hidden overflow-x-auto lg:block">
             <div className="grid min-w-[800px] grid-cols-[0.8fr_0.8fr_1fr_1.2fr_1fr_0.9fr]">
               {[
                 "Dispute",
@@ -2841,6 +2966,25 @@ function DisputesPage({ onToast }) {
               ))}
             </div>
             {visibleResolved.length === 0 && <EmptyState />}
+            </div>
+            <div className="divide-y divide-slate-100 lg:hidden">
+              {visibleResolved.map((item) => (
+                <div key={item.id} className="p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold text-slate-800">{item.id}</div>
+                      <div className="mt-1 text-xs text-slate-500">{item.order} · {item.seller}</div>
+                    </div>
+                    <StatusBadge status={item.outcome} />
+                  </div>
+                  <div className="mt-3 grid grid-cols-2 gap-3 text-xs">
+                    <div><div className="text-slate-400">Raised by</div><div className="mt-1 font-medium text-slate-700">{item.raisedBy}</div></div>
+                    <div><div className="text-slate-400">Resolved</div><div className="mt-1 font-medium text-slate-700">{item.resolved}</div></div>
+                  </div>
+                </div>
+              ))}
+              {visibleResolved.length === 0 && <EmptyState />}
+            </div>
           </div>
         )}
       </div>
@@ -3063,7 +3207,8 @@ function PayoutsPage({ onToast }) {
         {filtered.length === 0 ? (
           <EmptyState title={`No ${tab.toLowerCase()} payouts`} />
         ) : (
-          <div className="overflow-x-auto">
+          <div>
+            <div className="hidden overflow-x-auto lg:block">
             <div className="grid min-w-[780px] grid-cols-[1.3fr_1.2fr_1fr_0.9fr_1fr_1fr]">
               {[
                 "Seller",
@@ -3119,6 +3264,31 @@ function PayoutsPage({ onToast }) {
                     )}
                   </div>
                 </Fragment>
+              ))}
+            </div>
+            </div>
+            <div className="divide-y divide-slate-100 lg:hidden">
+              {filtered.map((item) => (
+                <div key={item.id} className="p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-semibold text-slate-800">{item.seller}</div>
+                      <div className="mt-1 text-xs text-slate-500">{item.period}</div>
+                    </div>
+                    <StatusBadge status={item.status} />
+                  </div>
+                  <div className="mt-3 flex items-end justify-between gap-3">
+                    <div>
+                      <div className="text-[11px] text-slate-400">Amount</div>
+                      <div className="mt-1 text-sm font-semibold text-slate-700">{item.amount}</div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={() => setDetails(item)} className="btn-secondary h-9 px-3 text-xs">Breakdown</button>
+                      {item.status === "Pending" && <button onClick={() => persistPayoutTransition(item, "Processing")} className="btn-primary h-9 px-3 text-xs">Release</button>}
+                      {item.status === "Processing" && <button onClick={() => persistPayoutTransition(item, "Paid")} className="btn-primary h-9 px-3 text-xs">Mark paid</button>}
+                    </div>
+                  </div>
+                </div>
               ))}
             </div>
           </div>
@@ -3254,7 +3424,8 @@ function SettingsPage({ onToast }) {
                 New Category
               </button>
             </Toolbar>
-            <div className="overflow-x-auto">
+            <div>
+              <div className="hidden overflow-x-auto lg:block">
               <div className="grid min-w-[700px] grid-cols-[1.3fr_1.2fr_1fr_0.9fr_0.6fr]">
                 {["Name", "Slug", "Parent", "Status", "Actions"].map(
                   (heading) => (
@@ -3298,6 +3469,24 @@ function SettingsPage({ onToast }) {
                       </button>
                     </div>
                   </Fragment>
+                ))}
+              </div>
+              </div>
+              <div className="divide-y divide-slate-100 lg:hidden">
+                {filtered.map((item) => (
+                  <div key={item.slug} className="p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-semibold text-slate-800">{item.name}</div>
+                        <div className="mt-1 truncate text-xs text-slate-500">{item.slug} · Parent: {item.parent}</div>
+                      </div>
+                      <StatusBadge status={item.status} />
+                    </div>
+                    <div className="mt-3 flex justify-end gap-2">
+                      <button aria-label={`Edit category ${item.name}`} onClick={() => setModal({ type: "edit", item })} className="btn-secondary h-9 px-3 text-xs">Edit</button>
+                      <button aria-label={`${item.status === "Active" ? "Archive" : "Restore"} category ${item.name}`} onClick={() => persistCategoryStatus(item)} className="btn-secondary h-9 px-3 text-xs">{item.status === "Active" ? "Archive" : "Restore"}</button>
+                    </div>
+                  </div>
                 ))}
               </div>
             </div>

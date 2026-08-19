@@ -30,6 +30,7 @@ export function useMarketplaceDashboard() {
     queryKey: ['marketplace', 'dashboard'],
     queryFn: getDashboard,
     enabled: apiMode === 'api',
+    initialData: apiMode === 'api' ? undefined : dashboardData,
   })
 }
 
