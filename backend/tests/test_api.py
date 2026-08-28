@@ -5,10 +5,22 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 import pytest
 
+from app.auth import DEV_ORGANIZATION_ID, create_local_access_token
+from app.config import get_settings
 from app.main import app
 from app.schemas import CheckoutCreate, ProductBulkDelete, ProductCreate, SellerApplicationCreate
 
 client = TestClient(app)
+
+
+def demo_token(*roles: str) -> str:
+    return create_local_access_token(
+        subject="test-user",
+        organization_id=DEV_ORGANIZATION_ID,
+        roles=frozenset(roles),
+        seller_id=None,
+        settings=get_settings(),
+    )
 
 
 def test_health() -> None:
@@ -17,19 +29,33 @@ def test_health() -> None:
     assert response.json()["status"] == "ok"
 
 
-def test_dashboard_uses_dev_auth_context() -> None:
-    response = client.get("/api/marketplace/dashboard")
+def test_dashboard_uses_authenticated_demo_context() -> None:
+    response = client.get(
+        "/api/marketplace/dashboard",
+        headers={"Authorization": f"Bearer {demo_token('Marketplace Admin')}"},
+    )
     assert response.status_code == 200
     assert response.json()["metrics"][0]["label"] == "GMV (30d)"
     assert response.json()["metrics"][0]["value"].startswith(chr(0x20B1))
 
 
-def test_role_token_can_be_selected_for_local_api() -> None:
+def test_demo_role_token_can_be_selected_for_local_api() -> None:
     response = client.get(
         "/api/marketplace/dashboard",
-        headers={"Authorization": "Bearer dev-finance"},
+        headers={"Authorization": f"Bearer {demo_token('Finance/Payouts')}"},
     )
     assert response.status_code == 200
+
+
+def test_anonymous_and_legacy_dev_admin_access_are_disabled() -> None:
+    anonymous = client.get("/api/marketplace/dashboard")
+    legacy = client.get(
+        "/api/marketplace/dashboard",
+        headers={"Authorization": "Bearer dev-marketplace-admin"},
+    )
+
+    assert anonymous.status_code == 401
+    assert legacy.status_code == 401
 
 
 def test_product_create_payload_strips_required_text_fields() -> None:

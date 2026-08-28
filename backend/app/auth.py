@@ -28,7 +28,7 @@ class AuthContext:
 DEV_ORGANIZATION_ID = uuid.UUID("6c0e9b55-4f6d-4e60-90c5-8cf4c4f3f5a0")
 
 
-def _dev_context(token: str | None) -> AuthContext:
+def _dev_context(token: str | None, settings: Settings) -> AuthContext:
     contexts = {
         "dev-marketplace-admin": ("local-admin", {"Marketplace Admin"}),
         "dev-catalog-moderator": ("local-moderator", {"Catalog Moderator"}),
@@ -37,9 +37,11 @@ def _dev_context(token: str | None) -> AuthContext:
         "dev-seller": ("local-seller", {"Seller"}),
         "dev-customer": ("local-customer", {"Customer"}),
     }
-    if token and token not in contexts:
+    if not settings.local_allow_legacy_tokens:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Bearer token required")
+    if not token or token not in contexts:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid local demo access token")
-    subject, roles = contexts.get(token or "", ("local-dev", {"Marketplace Admin"}))
+    subject, roles = contexts[token]
     return AuthContext(subject=subject, organization_id=DEV_ORGANIZATION_ID, roles=frozenset(roles))
 
 
@@ -120,7 +122,7 @@ def get_auth_context(credentials: HTTPAuthorizationCredentials | None = Depends(
     if settings.argo_auth_mode == "dev":
         if credentials and credentials.credentials.startswith("demo."):
             return _verify_local_access_token(credentials.credentials, settings)
-        return _dev_context(credentials.credentials if credentials else None)
+        return _dev_context(credentials.credentials if credentials else None, settings)
     if not credentials:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Bearer token required")
     return _verify_argo_token(credentials.credentials, settings)

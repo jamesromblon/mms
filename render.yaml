@@ -3,8 +3,8 @@ services:
     name: argo-marketplace-api
     runtime: python
     rootDir: backend
-    buildCommand: pip install -e ".[dev]"
-      startCommand: alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    buildCommand: pip install -e .
+    startCommand: alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /api/health
     autoDeployTrigger: commit
     envVars:
@@ -18,6 +18,10 @@ services:
         sync: false
       - key: ARGO_AUTH_MODE
         sync: false
+      - key: LOCAL_AUTH_SECRET
+        generateValue: true
+      - key: LOCAL_ALLOW_LEGACY_TOKENS
+        value: "false"
       - key: ARGO_JWT_ISSUER
         sync: false
       - key: ARGO_JWT_AUDIENCE

@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     argo_jwt_roles_claim: str = "roles"
     argo_jwt_seller_claim: str = "seller_id"
     local_auth_secret: str = Field(default="local-only-change-this-secret", validation_alias="LOCAL_AUTH_SECRET")
+    local_allow_legacy_tokens: bool = Field(default=False, validation_alias="LOCAL_ALLOW_LEGACY_TOKENS")
     local_access_token_minutes: int = Field(default=480, validation_alias="LOCAL_ACCESS_TOKEN_MINUTES")
     cors_origins: str = "http://localhost:5173"
 
