@@ -18,8 +18,28 @@ def _timestamps() -> list[sa.Column]:
     ]
 
 
+def _create_table_if_missing(table_name: str, *columns, **kwargs) -> None:
+    # Migration 0001 runs Base.metadata.create_all(), which already creates the
+    # full current schema (including these tables). Guard against double-creation
+    # so `alembic upgrade head` is idempotent on both fresh and pre-created databases.
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    if table_name in inspector.get_table_names():
+        return
+    op.create_table(table_name, *columns, **kwargs)
+
+
+def _create_index_if_missing(index_name: str, table_name: str, *columns, **kwargs) -> None:
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    existing = {idx["name"] for idx in inspector.get_indexes(table_name)}
+    if index_name in existing:
+        return
+    op.create_index(index_name, table_name, *columns, **kwargs)
+
+
 def upgrade() -> None:
-    op.create_table(
+    _create_table_if_missing(
         "marketplace_users",
         sa.Column("id", UUID(as_uuid=True), primary_key=True),
         sa.Column("organization_id", UUID(as_uuid=True), sa.ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False),
@@ -33,10 +53,10 @@ def upgrade() -> None:
         *_timestamps(),
         sa.UniqueConstraint("organization_id", "subject", name="uq_marketplace_user_subject"),
     )
-    op.create_index("ix_marketplace_users_organization_id", "marketplace_users", ["organization_id"])
-    op.create_index("ix_marketplace_users_seller_id", "marketplace_users", ["seller_id"])
+    _create_index_if_missing("ix_marketplace_users_organization_id", "marketplace_users", ["organization_id"])
+    _create_index_if_missing("ix_marketplace_users_seller_id", "marketplace_users", ["seller_id"])
 
-    op.create_table(
+    _create_table_if_missing(
         "seller_applications",
         sa.Column("id", UUID(as_uuid=True), primary_key=True),
         sa.Column("organization_id", UUID(as_uuid=True), sa.ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False),
@@ -49,9 +69,9 @@ def upgrade() -> None:
         sa.Column("reviewed_at", sa.DateTime(timezone=True), nullable=True),
         *_timestamps(),
     )
-    op.create_index("ix_seller_applications_organization_id", "seller_applications", ["organization_id"])
+    _create_index_if_missing("ix_seller_applications_organization_id", "seller_applications", ["organization_id"])
 
-    op.create_table(
+    _create_table_if_missing(
         "order_items",
         sa.Column("id", UUID(as_uuid=True), primary_key=True),
         sa.Column("organization_id", UUID(as_uuid=True), sa.ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False),
@@ -64,11 +84,11 @@ def upgrade() -> None:
         sa.Column("line_total", sa.Numeric(12, 2), nullable=False),
         *_timestamps(),
     )
-    op.create_index("ix_order_items_organization_id", "order_items", ["organization_id"])
-    op.create_index("ix_order_items_order_id", "order_items", ["order_id"])
-    op.create_index("ix_order_items_seller_id", "order_items", ["seller_id"])
+    _create_index_if_missing("ix_order_items_organization_id", "order_items", ["organization_id"])
+    _create_index_if_missing("ix_order_items_order_id", "order_items", ["order_id"])
+    _create_index_if_missing("ix_order_items_seller_id", "order_items", ["seller_id"])
 
-    op.create_table(
+    _create_table_if_missing(
         "order_customers",
         sa.Column("id", UUID(as_uuid=True), primary_key=True),
         sa.Column("organization_id", UUID(as_uuid=True), sa.ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False),
@@ -80,11 +100,11 @@ def upgrade() -> None:
         *_timestamps(),
         sa.UniqueConstraint("order_id", name="uq_order_customer_order"),
     )
-    op.create_index("ix_order_customers_organization_id", "order_customers", ["organization_id"])
-    op.create_index("ix_order_customers_order_id", "order_customers", ["order_id"])
-    op.create_index("ix_order_customers_subject", "order_customers", ["subject"])
+    _create_index_if_missing("ix_order_customers_organization_id", "order_customers", ["organization_id"])
+    _create_index_if_missing("ix_order_customers_order_id", "order_customers", ["order_id"])
+    _create_index_if_missing("ix_order_customers_subject", "order_customers", ["subject"])
 
-    op.create_table(
+    _create_table_if_missing(
         "payments",
         sa.Column("id", UUID(as_uuid=True), primary_key=True),
         sa.Column("organization_id", UUID(as_uuid=True), sa.ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False),
@@ -96,10 +116,10 @@ def upgrade() -> None:
         *_timestamps(),
         sa.UniqueConstraint("order_id", name="uq_payment_order"),
     )
-    op.create_index("ix_payments_organization_id", "payments", ["organization_id"])
-    op.create_index("ix_payments_order_id", "payments", ["order_id"])
+    _create_index_if_missing("ix_payments_organization_id", "payments", ["organization_id"])
+    _create_index_if_missing("ix_payments_order_id", "payments", ["order_id"])
 
-    op.create_table(
+    _create_table_if_missing(
         "commission_ledger",
         sa.Column("id", UUID(as_uuid=True), primary_key=True),
         sa.Column("organization_id", UUID(as_uuid=True), sa.ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False),
@@ -113,9 +133,9 @@ def upgrade() -> None:
         sa.Column("paid_at", sa.DateTime(timezone=True), nullable=True),
         *_timestamps(),
     )
-    op.create_index("ix_commission_ledger_organization_id", "commission_ledger", ["organization_id"])
-    op.create_index("ix_commission_ledger_seller_id", "commission_ledger", ["seller_id"])
-    op.create_index("ix_commission_ledger_order_id", "commission_ledger", ["order_id"])
+    _create_index_if_missing("ix_commission_ledger_organization_id", "commission_ledger", ["organization_id"])
+    _create_index_if_missing("ix_commission_ledger_seller_id", "commission_ledger", ["seller_id"])
+    _create_index_if_missing("ix_commission_ledger_order_id", "commission_ledger", ["order_id"])
 
 
 def downgrade() -> None:

@@ -135,6 +135,7 @@ class CustomerOrderRead(BaseModel):
 
 
 class SellerOrderRead(BaseModel):
+    id: uuid.UUID
     order_number: str
     buyer_name: str
     item_count: int

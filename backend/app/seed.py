@@ -293,6 +293,7 @@ def seed() -> None:
                 )
             )
         db.add_all(orders)
+        db.flush()
         order_by_number = {item.order_number: item for item in orders}
         seeded_order_lines = [
             ("ORD-20842", "NSG-AUD-210", 1, "Mika Reyes", "mika.reyes@example.com", "Makati City, Metro Manila"),

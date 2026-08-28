@@ -432,6 +432,7 @@ def list_seller_orders(
     for item in orders:
         payment = db.scalar(select(Payment).where(Payment.order_id == item.id))
         result.append(SellerOrderRead(
+            id=item.id,
             order_number=item.order_number,
             buyer_name=item.buyer_name,
             item_count=item.item_count,
@@ -458,7 +459,7 @@ def mark_seller_order_shipped(
     item.status = "Shipped"
     db.commit()
     payment = db.scalar(select(Payment).where(Payment.order_id == item.id))
-    return SellerOrderRead(order_number=item.order_number, buyer_name=item.buyer_name, item_count=item.item_count, total=item.total, status=item.status, payment_status=payment.status if payment else "Unknown", placed_at=item.placed_at)
+    return SellerOrderRead(id=item.id, order_number=item.order_number, buyer_name=item.buyer_name, item_count=item.item_count, total=item.total, status=item.status, payment_status=payment.status if payment else "Unknown", placed_at=item.placed_at)
 
 
 @router.get("/seller/commission", response_model=CommissionBalanceRead)
