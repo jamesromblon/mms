@@ -1,10 +1,13 @@
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter } from 'react-router-dom'
 import { afterEach, expect, test } from 'vitest'
 import App from '../App'
 
-afterEach(() => localStorage.clear())
+afterEach(() => {
+  cleanup()
+  localStorage.clear()
+})
 
 function renderApp(path = '/dashboard') {
   window.history.pushState({}, '', path)
@@ -12,7 +15,13 @@ function renderApp(path = '/dashboard') {
   return render(<QueryClientProvider client={queryClient}><BrowserRouter><App /></BrowserRouter></QueryClientProvider>)
 }
 
+function signInAsAdmin() {
+  localStorage.setItem('argo_access_token', 'demo.admin')
+  localStorage.setItem('argo_portal_role', 'admin')
+}
+
 test('renders the marketplace dashboard shell', () => {
+  signInAsAdmin()
   renderApp('/dashboard')
   expect(screen.getByText('Marketplace')).toBeInTheDocument()
   expect(screen.getByRole('heading', { name: 'Dashboard' })).toBeInTheDocument()
@@ -60,6 +69,7 @@ test('shows and hides the login password', () => {
 })
 
 test('compacts and expands the desktop sidebar control', () => {
+  signInAsAdmin()
   const { container } = renderApp()
   const app = within(container)
 
@@ -73,6 +83,7 @@ test('compacts and expands the desktop sidebar control', () => {
 })
 
 test('keeps admin catalog oversight separate from seller creation', () => {
+  signInAsAdmin()
   renderApp('/products')
 
   expect(screen.getByRole('heading', { name: 'Products' })).toBeInTheDocument()
@@ -80,12 +91,14 @@ test('keeps admin catalog oversight separate from seller creation', () => {
 })
 
 test('offers a proper Excel export from products', () => {
+  signInAsAdmin()
   renderApp('/products')
 
   expect(screen.getAllByRole('button', { name: 'Export Excel' }).length).toBeGreaterThan(0)
 })
 
 test('selects products and asks for confirmation before bulk removal', () => {
+  signInAsAdmin()
   const { container } = renderApp('/products')
   const app = within(container)
 
@@ -98,6 +111,7 @@ test('selects products and asks for confirmation before bulk removal', () => {
 })
 
 test('opens category correction in the product edit form', () => {
+  signInAsAdmin()
   const { container } = renderApp('/products')
   const app = within(container)
 
@@ -113,4 +127,25 @@ test('opens category correction in the product edit form', () => {
   expect(modal.getByLabelText(/^Description/)).toBeInTheDocument()
   expect(modal.getByLabelText(/^Image URL/)).toBeInTheDocument()
   expect(modal.getByRole('option', { name: 'Electronics' })).toBeInTheDocument()
+})
+
+test('signs the admin out, clears the session, and returns to admin login', async () => {
+  signInAsAdmin()
+  renderApp('/products')
+
+  fireEvent.click(screen.getByRole('button', { name: 'Open profile menu' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Sign out' }))
+
+  expect(localStorage.getItem('argo_access_token')).toBeNull()
+  expect(localStorage.getItem('argo_portal_role')).toBeNull()
+  expect(await screen.findByRole('heading', { name: 'Welcome back' })).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'admin' })).toHaveClass('bg-white')
+})
+
+test('redirects unauthenticated admin routes to login', async () => {
+  renderApp('/dashboard')
+
+  expect(await screen.findByRole('heading', { name: 'Welcome back' })).toBeInTheDocument()
+  expect(window.location.pathname).toBe('/login')
+  expect(window.location.search).toBe('?role=admin')
 })

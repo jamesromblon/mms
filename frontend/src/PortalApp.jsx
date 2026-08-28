@@ -1,8 +1,9 @@
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, Routes, Route, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { applications, categories, orders, products, sellers } from "./data";
 import { client, isApiMode, mutateMarketplace, useMarketplaceList } from "./api";
+import { clearAuthSession } from "./authSession";
 
 const peso = (value) => `₱${Number(String(value ?? 0).replace(/[^0-9.-]/g, "") || 0).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const normalizeProduct = (item) => ({
@@ -23,14 +24,15 @@ function PortalIcon({ name }) {
 
 function PortalShell({ kind, children }) {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const customer = kind === "customer";
   const links = customer
     ? [["Home", "/", "bi-house"], ["Shop", "/marketplace", "bi-grid"], ["My orders", "/marketplace/orders", "bi-bag-check"], ["Sell on Argo", "/signup?role=seller", "bi-shop"]]
     : [["Home", "/", "bi-house"], ["Overview", "/seller", "bi-speedometer2"], ["My products", "/seller/products", "bi-box-seam"], ["Orders", "/seller/orders", "bi-receipt"], ["Commission", "/seller/commission", "bi-percent"]];
   const signOut = () => {
-    localStorage.removeItem("argo_access_token");
-    localStorage.removeItem("argo_portal_role");
-    navigate("/");
+    clearAuthSession();
+    queryClient.clear();
+    navigate("/login", { replace: true });
   };
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800">
@@ -80,7 +82,11 @@ function LandingPage() {
 function AuthPage({ signup = false }) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const [role, setRole] = useState(searchParams.get("role") === "seller" ? "seller" : "customer");
+  const requestedRole = searchParams.get("role");
+  const initialRole = signup
+    ? requestedRole === "seller" ? "seller" : "customer"
+    : ["admin", "seller"].includes(requestedRole) ? requestedRole : "customer";
+  const [role, setRole] = useState(initialRole);
   const [form, setForm] = useState({ name: "", business: "", email: "", phone: "", password: "" });
   const [error, setError] = useState("");
   const [showPassword, setShowPassword] = useState(false);

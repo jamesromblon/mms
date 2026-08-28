@@ -1,10 +1,12 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
+  Navigate,
   NavLink,
   Route,
   Routes,
   useLocation,
+  useNavigate,
 } from "react-router-dom";
 import { twMerge } from "tailwind-merge";
 import { clsx } from "clsx";
@@ -37,6 +39,7 @@ import {
   sellers,
 } from "./data";
 import { mutateMarketplace, useMarketplaceDashboard, useMarketplaceList } from "./api";
+import { clearAuthSession } from "./authSession";
 import { exportProductsWorkbook } from "./lib/productExport";
 import { AdminCommissionPage, PortalRoutes } from "./PortalApp";
 
@@ -211,7 +214,7 @@ function Sidebar({ compact, onCompactToggle, open, onClose }) {
   );
 }
 
-function Topbar({ compact, onMenu, onToast }) {
+function Topbar({ compact, onMenu, onToast, onSignOut }) {
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
 
@@ -332,7 +335,7 @@ function Topbar({ compact, onMenu, onToast }) {
                   className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs hover:bg-slate-50"
                   onClick={() => {
                     setProfileOpen(false);
-                    onToast("Session remains active");
+                    onSignOut();
                   }}
                 >
                   <Icon name="bi-box-arrow-right" />
@@ -350,6 +353,13 @@ function Topbar({ compact, onMenu, onToast }) {
 function Layout({ children, toast, onToast }) {
   const [sidebarCompact, setSidebarCompact] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const signOut = () => {
+    clearAuthSession();
+    queryClient.clear();
+    navigate("/login?role=admin", { replace: true });
+  };
   return (
     <div className="min-h-screen bg-canvas">
       <Sidebar
@@ -362,6 +372,7 @@ function Layout({ children, toast, onToast }) {
         compact={sidebarCompact}
         onMenu={() => setSidebarOpen(true)}
         onToast={onToast}
+        onSignOut={signOut}
       />
       <main
         className={cn(
@@ -3825,8 +3836,8 @@ function App() {
   if (isPortalRoute) return <PortalRoutes onToast={notify} />;
   const localToken = localStorage.getItem("argo_access_token");
   const localRole = localStorage.getItem("argo_portal_role");
-  if (localToken?.startsWith("demo.") && localRole !== "admin") {
-    return <div className="min-h-screen bg-slate-50 p-8"><div className="mx-auto max-w-lg rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm"><Icon name="bi-shield-lock" className="text-3xl text-rose-500" /><h1 className="mt-4 text-xl font-bold text-slate-900">Admin access required</h1><p className="mt-2 text-sm text-slate-500">Your current account does not have Marketplace Administrator access.</p><a className="btn-primary mt-6" href="/login">Sign in with another account</a></div></div>;
+  if (!localToken || localRole !== "admin") {
+    return <Navigate to="/login?role=admin" replace />;
   }
   return (
     <Layout toast={toast} onToast={setToast}>
