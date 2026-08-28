@@ -1,9 +1,9 @@
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, Routes, Route, useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, Navigate, Routes, Route, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { applications, categories, orders, products, sellers } from "./data";
 import { client, isApiMode, mutateMarketplace, useMarketplaceList } from "./api";
-import { clearAuthSession, getAuthSession, getWorkspaceForRole } from "./authSession";
+import { clearAuthSession, getAuthSession, getHomeForRole, getWorkspaceForRole } from "./authSession";
 
 const peso = (value) => `₱${Number(String(value ?? 0).replace(/[^0-9.-]/g, "") || 0).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const normalizeProduct = (item) => ({
@@ -28,7 +28,7 @@ function PortalShell({ kind, children }) {
   const session = getAuthSession();
   const workspace = getWorkspaceForRole(session.role);
   const customer = kind === "customer";
-  const publicLinks = [["Home", "/", "bi-house"], ["Shop", "/marketplace", "bi-grid"]];
+  const publicLinks = session.token ? [["Shop", "/marketplace", "bi-grid"]] : [["Home", "/", "bi-house"], ["Shop", "/marketplace", "bi-grid"]];
   const accountLinks = session.role === "customer"
     ? [["My orders", "/marketplace/orders", "bi-bag-check"]]
     : session.role === "seller"
@@ -38,7 +38,7 @@ function PortalShell({ kind, children }) {
         : [["My orders", "/marketplace/orders", "bi-bag-check"], ["Sell on Argo", "/signup?role=seller", "bi-shop"]];
   const links = customer
     ? [...publicLinks, ...accountLinks]
-    : [["Home", "/", "bi-house"], ["Overview", "/seller", "bi-speedometer2"], ["My products", "/seller/products", "bi-box-seam"], ["Orders", "/seller/orders", "bi-receipt"], ["Commission", "/seller/commission", "bi-percent"]];
+    : [["Overview", "/seller", "bi-speedometer2"], ["My products", "/seller/products", "bi-box-seam"], ["Orders", "/seller/orders", "bi-receipt"], ["Commission", "/seller/commission", "bi-percent"]];
   const signOut = () => {
     clearAuthSession();
     queryClient.clear();
@@ -48,7 +48,7 @@ function PortalShell({ kind, children }) {
     <div className="min-h-screen bg-slate-50 text-slate-800">
       <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
-          <Link to={customer ? "/marketplace" : "/seller"} className="flex items-center gap-3">
+          <Link to={session.token && workspace ? getHomeForRole(session.role) : customer ? "/marketplace" : "/seller"} className="flex items-center gap-3">
             <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-600 text-white"><PortalIcon name="bi-shop" /></span>
             <span><span className="block text-sm font-bold text-slate-900">Argo Marketplace</span><span className="block text-[11px] text-slate-500">{customer ? "Shop local products" : "Seller workspace"}</span></span>
           </Link>
@@ -86,6 +86,9 @@ function ProductTile({ product, onAdd }) {
 }
 
 function LandingPage() {
+  const session = getAuthSession();
+  const signedInHome = getHomeForRole(session.role);
+  if (session.token && signedInHome) return <Navigate to={signedInHome} replace />;
   return (
     <PortalShell kind="customer">
       <section className="overflow-hidden rounded-3xl border border-blue-100 bg-white px-6 py-10 shadow-sm sm:px-10 lg:grid lg:grid-cols-[1.15fr_0.85fr] lg:items-center lg:px-14 lg:py-16">
@@ -178,7 +181,7 @@ function AuthPage({ signup = false }) {
     }
   };
   const roleOptions = signup ? ["customer", "seller"] : ["customer", "seller", "admin"];
-  return <div className="min-h-screen bg-slate-50 px-4 py-8 sm:py-16"><div className="mx-auto max-w-md"><Link to="/" className="flex items-center justify-center gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600 text-white"><PortalIcon name="bi-shop" /></span><span className="text-lg font-bold text-slate-900">Argo Marketplace</span></Link><div className="card mt-8 p-6 sm:p-8"><div className="text-center"><h1 className="text-2xl font-bold text-slate-900">{signup ? "Create your marketplace account" : "Welcome back"}</h1><p className="mt-2 text-sm text-slate-500">{signup ? "Choose how you will use Argo." : "Continue to your Argo workspace."}</p></div><div className={`mt-6 grid ${roleOptions.length === 3 ? "grid-cols-3" : "grid-cols-2"} rounded-lg bg-slate-100 p-1`}>{roleOptions.map((option) => <button key={option} className={`rounded-md px-3 py-2 text-sm font-semibold capitalize ${role === option ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"}`} onClick={() => setRole(option)} type="button">{option}</button>)}</div><form className="mt-6 space-y-4" onSubmit={submit}>{signup && <label className="block text-sm font-semibold text-slate-700">Full name<input className="input mt-1.5" value={form.name} onChange={(event) => update("name", event.target.value)} /></label>}{signup && role === "seller" && <><label className="block text-sm font-semibold text-slate-700">Business name<input className="input mt-1.5" value={form.business} onChange={(event) => update("business", event.target.value)} /></label><label className="block text-sm font-semibold text-slate-700">Phone<input className="input mt-1.5" value={form.phone} onChange={(event) => update("phone", event.target.value)} /></label></>}<label className="block text-sm font-semibold text-slate-700">Email<input className="input mt-1.5" type="email" value={form.email} onChange={(event) => update("email", event.target.value)} /></label><label className="block text-sm font-semibold text-slate-700" htmlFor="auth-password">Password<input id="auth-password" className="input mt-1.5" type={showPassword ? "text" : "password"} value={form.password} onChange={(event) => update("password", event.target.value)} /></label><button type="button" title={showPassword ? "Hide password" : "Show password"} className="-mt-2 flex items-center gap-2 text-xs font-semibold text-slate-500 hover:text-blue-600" onClick={() => setShowPassword((value) => !value)}><PortalIcon name={showPassword ? "bi-eye-slash" : "bi-eye"} /> {showPassword ? "Hide password" : "Show password"}</button>{error && <p className="rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700">{error}</p>}<button className="btn-primary w-full" disabled={isSubmitting} type="submit">{isSubmitting ? "Please wait..." : signup ? "Create account" : "Sign in"} <PortalIcon name="bi-arrow-right" /></button></form><p className="mt-6 text-center text-sm text-slate-500">{signup ? "Already registered?" : "New to Argo?"} <Link className="font-semibold text-blue-600" to={signup ? "/login" : "/signup"}>{signup ? "Sign in" : "Create an account"}</Link></p><Link to="/" className="mt-4 flex items-center justify-center gap-2 text-sm font-semibold text-slate-500 hover:text-blue-600"><PortalIcon name="bi-arrow-left" /> Back to landing page</Link><p className="mt-4 text-center text-[11px] leading-5 text-slate-400">Local demo access uses stored demo accounts in development. Production credentials remain managed by the ARGO authentication platform.</p></div></div></div>;
+  return <div className="min-h-screen bg-slate-50 px-4 py-8 sm:py-16"><div className="mx-auto max-w-md"><Link to="/" className="flex items-center justify-center gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600 text-white"><PortalIcon name="bi-shop" /></span><span className="text-lg font-bold text-slate-900">Argo Marketplace</span></Link><div className="card mt-8 p-6 sm:p-8"><div className="text-center"><h1 className="text-2xl font-bold text-slate-900">{signup ? "Create your marketplace account" : "Welcome back"}</h1><p className="mt-2 text-sm text-slate-500">{signup ? "Choose how you will use Argo." : "Your account role determines the workspace you can access."}</p></div>{signup && <div className="mt-6 grid grid-cols-2 rounded-lg bg-slate-100 p-1">{roleOptions.map((option) => <button key={option} className={`rounded-md px-3 py-2 text-sm font-semibold capitalize ${role === option ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"}`} onClick={() => setRole(option)} type="button">{option}</button>)}</div>}<form className="mt-6 space-y-4" onSubmit={submit}>{signup && <label className="block text-sm font-semibold text-slate-700">Full name<input className="input mt-1.5" value={form.name} onChange={(event) => update("name", event.target.value)} /></label>}{signup && role === "seller" && <><label className="block text-sm font-semibold text-slate-700">Business name<input className="input mt-1.5" value={form.business} onChange={(event) => update("business", event.target.value)} /></label><label className="block text-sm font-semibold text-slate-700">Phone<input className="input mt-1.5" value={form.phone} onChange={(event) => update("phone", event.target.value)} /></label></>}<label className="block text-sm font-semibold text-slate-700">Email<input className="input mt-1.5" type="email" value={form.email} onChange={(event) => update("email", event.target.value)} /></label><label className="block text-sm font-semibold text-slate-700" htmlFor="auth-password">Password<input id="auth-password" className="input mt-1.5" type={showPassword ? "text" : "password"} value={form.password} onChange={(event) => update("password", event.target.value)} /></label><button type="button" title={showPassword ? "Hide password" : "Show password"} className="-mt-2 flex items-center gap-2 text-xs font-semibold text-slate-500 hover:text-blue-600" onClick={() => setShowPassword((value) => !value)}><PortalIcon name={showPassword ? "bi-eye-slash" : "bi-eye"} /> {showPassword ? "Hide password" : "Show password"}</button>{error && <p className="rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700">{error}</p>}<button className="btn-primary w-full" disabled={isSubmitting} type="submit">{isSubmitting ? "Please wait..." : signup ? "Create account" : "Sign in"} <PortalIcon name="bi-arrow-right" /></button></form><p className="mt-6 text-center text-sm text-slate-500">{signup ? "Already registered?" : "New to Argo?"} <Link className="font-semibold text-blue-600" to={signup ? "/login" : "/signup"}>{signup ? "Sign in" : "Create an account"}</Link></p><Link to="/" className="mt-4 flex items-center justify-center gap-2 text-sm font-semibold text-slate-500 hover:text-blue-600"><PortalIcon name="bi-arrow-left" /> Back to landing page</Link><p className="mt-4 text-center text-[11px] leading-5 text-slate-400">Role-based access is enforced by the account returned from the ARGO authentication service.</p></div></div></div>;
 }
 
 function CheckoutPanel({ cart, onClose, onComplete }) {

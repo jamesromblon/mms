@@ -18,6 +18,13 @@ export function getWorkspaceForRole(role) {
   return null;
 }
 
+export function getHomeForRole(role) {
+  if (role === "admin") return "/dashboard";
+  if (role === "seller") return "/seller";
+  if (role === "customer") return "/marketplace";
+  return null;
+}
+
 export function clearAuthSession() {
   localStorage.removeItem(AUTH_TOKEN_KEY);
   localStorage.removeItem(AUTH_ROLE_KEY);

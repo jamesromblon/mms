@@ -37,6 +37,45 @@ test('renders the public customer marketplace landing page', () => {
   expect(screen.getByRole('link', { name: /Admin sign in/ })).toHaveAttribute('href', '/login?role=admin')
 })
 
+test('removes the role selector from login while keeping account type on signup', () => {
+  renderApp('/login?role=seller')
+
+  expect(screen.queryByRole('button', { name: 'customer' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'seller' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'admin' })).not.toBeInTheDocument()
+
+  cleanup()
+  renderApp('/signup?role=seller')
+  expect(screen.getByRole('button', { name: 'customer' })).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'seller' })).toBeInTheDocument()
+})
+
+test('removes Home from the signed-in customer navigation', () => {
+  localStorage.setItem('argo_access_token', 'demo.customer')
+  localStorage.setItem('argo_portal_role', 'customer')
+  renderApp('/marketplace')
+
+  expect(screen.queryByRole('link', { name: 'Home' })).not.toBeInTheDocument()
+  expect(screen.getAllByRole('link', { name: 'My orders' }).length).toBeGreaterThan(0)
+})
+
+test('removes Home from the signed-in seller navigation', () => {
+  localStorage.setItem('argo_access_token', 'demo.seller')
+  localStorage.setItem('argo_portal_role', 'seller')
+  renderApp('/seller')
+
+  expect(screen.queryByRole('link', { name: 'Home' })).not.toBeInTheDocument()
+  expect(screen.getAllByRole('link', { name: 'Overview' }).length).toBeGreaterThan(0)
+})
+
+test('redirects a signed-in user from the landing page to their workspace', () => {
+  localStorage.setItem('argo_access_token', 'demo.customer')
+  localStorage.setItem('argo_portal_role', 'customer')
+  renderApp('/')
+
+  expect(screen.getByRole('heading', { name: 'Shop the catalog' })).toBeInTheDocument()
+})
+
 test('keeps the catalog public but requires a customer session for checkout', async () => {
   renderApp('/marketplace')
 
@@ -170,7 +209,7 @@ test('signs the admin out, clears the session, and returns to admin login', asyn
   expect(localStorage.getItem('argo_access_token')).toBeNull()
   expect(localStorage.getItem('argo_portal_role')).toBeNull()
   expect(await screen.findByRole('heading', { name: 'Welcome back' })).toBeInTheDocument()
-  expect(screen.getByRole('button', { name: 'admin' })).toHaveClass('bg-white')
+  expect(screen.queryByRole('button', { name: 'admin' })).not.toBeInTheDocument()
 })
 
 test('redirects unauthenticated admin routes to login', async () => {
