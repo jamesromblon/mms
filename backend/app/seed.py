@@ -9,15 +9,20 @@ from sqlalchemy import delete
 from .db import Base, SessionLocal, engine
 from .models import (
     Category,
+    CommissionLedger,
     Dispute,
     MarketplaceProfile,
     Order,
+    OrderCustomer,
+    OrderItem,
     Organization,
+    Payment,
     Payout,
     Policy,
     Product,
     Review,
     Seller,
+    SellerApplication,
 )
 
 ORG_ID = uuid.UUID("6c0e9b55-4f6d-4e60-90c5-8cf4c4f3f5a0")
@@ -28,7 +33,7 @@ def seed() -> None:
     """Replace only the local ARGO demo tenant with a coherent, realistic dataset."""
     Base.metadata.create_all(engine)
     with SessionLocal() as db:
-        for model in (Review, Product, Dispute, Payout, Policy, Seller, Category):
+        for model in (Review, CommissionLedger, Payment, OrderItem, OrderCustomer, Product, Dispute, Payout, Policy, SellerApplication, Seller, Category):
             db.execute(delete(model).where(model.organization_id == ORG_ID))
         db.execute(delete(Order).where(Order.organization_id == ORG_ID))
 
@@ -257,6 +262,7 @@ def seed() -> None:
             for name, sku, seller, category, price, stock, status in product_specs
         ]
         db.add_all(product_objects)
+        product_by_sku = {item.sku: item for item in product_objects}
 
         buyer_names = [
             "Mika Reyes",
@@ -287,6 +293,19 @@ def seed() -> None:
                 )
             )
         db.add_all(orders)
+        order_by_number = {item.order_number: item for item in orders}
+        seeded_order_lines = [
+            ("ORD-20842", "NSG-AUD-210", 1, "Mika Reyes", "mika.reyes@example.com", "Makati City, Metro Manila"),
+            ("ORD-20841", "LLC-HOM-044", 1, "Jericho Tan", "jericho.tan@example.com", "Quezon City, Metro Manila"),
+            ("ORD-20836", "NSG-AUD-142", 1, "Paula Villanueva", "paula.villanueva@example.com", "Cebu City, Cebu"),
+            ("ORD-20831", "WHS-TOL-019", 1, "Noel Garcia", "noel.garcia@example.com", "Davao City, Davao del Sur"),
+        ]
+        for order_number, sku, quantity, buyer, email, address in seeded_order_lines:
+            order = order_by_number[order_number]
+            product = product_by_sku[sku]
+            db.add(OrderItem(id=uuid.uuid4(), organization_id=ORG_ID, order_id=order.id, product_id=product.id, seller_id=product.seller_id, product_name=product.name, quantity=quantity, unit_price=product.price, line_total=product.price * quantity))
+            db.add(OrderCustomer(id=uuid.uuid4(), organization_id=ORG_ID, order_id=order.id, subject="local-customer", full_name=buyer, email=email, delivery_address=address))
+            db.add(Payment(id=uuid.uuid4(), organization_id=ORG_ID, order_id=order.id, method="GCash" if order.status == "Completed" else "Cash", status="Paid" if order.status == "Completed" else "Pending", paid_at=base_date - timedelta(hours=2) if order.status == "Completed" else None))
 
         db.add_all(
             [
@@ -441,6 +460,65 @@ def seed() -> None:
         )
         db.add_all(
             [
+                SellerApplication(
+                    id=uuid.uuid4(),
+                    organization_id=ORG_ID,
+                    business_name="Metro Electronics",
+                    owner_name="Paolo Reyes",
+                    email="paolo.reyes@example.com",
+                    phone="0917 555 0182",
+                    status="Pending Approval",
+                ),
+                SellerApplication(
+                    id=uuid.uuid4(),
+                    organization_id=ORG_ID,
+                    business_name="Bella Fashion House",
+                    owner_name="Anna Bautista",
+                    email="anna.bautista@example.com",
+                    phone="0917 555 0146",
+                    status="Pending Approval",
+                ),
+            ]
+        )
+        db.add_all(
+            [
+                CommissionLedger(
+                    id=uuid.uuid4(),
+                    organization_id=ORG_ID,
+                    seller_id=sellers["Northstar Gadgets"].id,
+                    order_id=order_by_number["ORD-20836"].id,
+                    gross_amount=Decimal("18400.00"),
+                    commission_rate=Decimal("12.00"),
+                    commission_amount=Decimal("2208.00"),
+                    status="Overdue",
+                    due_on=date(2026, 8, 18),
+                ),
+                CommissionLedger(
+                    id=uuid.uuid4(),
+                    organization_id=ORG_ID,
+                    seller_id=sellers["Northstar Gadgets"].id,
+                    order_id=order_by_number["ORD-20831"].id,
+                    gross_amount=Decimal("4950.00"),
+                    commission_rate=Decimal("12.00"),
+                    commission_amount=Decimal("594.00"),
+                    status="Due",
+                    due_on=date(2026, 9, 2),
+                ),
+                CommissionLedger(
+                    id=uuid.uuid4(),
+                    organization_id=ORG_ID,
+                    seller_id=sellers["Luntian Living Co."].id,
+                    order_id=order_by_number["ORD-20827"].id,
+                    gross_amount=Decimal("1315.00"),
+                    commission_rate=Decimal("10.00"),
+                    commission_amount=Decimal("131.50"),
+                    status="Due",
+                    due_on=date(2026, 9, 4),
+                ),
+            ]
+        )
+        db.add_all(
+            [
                 Policy(
                     id=uuid.uuid4(),
                     organization_id=ORG_ID,
@@ -448,6 +526,7 @@ def seed() -> None:
                     configuration={
                         "default_rate": 12.0,
                         "overrides": {"electronics": 12.0, "food-beverage": 10.0, "wellness": 10.0},
+                        "grace_period_days": 7,
                     },
                 ),
                 Policy(

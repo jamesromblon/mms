@@ -5,6 +5,7 @@ import urllib.request
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from fastapi import Depends, HTTPException, status
@@ -21,19 +22,61 @@ class AuthContext:
     subject: str
     organization_id: uuid.UUID
     roles: frozenset[str]
+    seller_id: uuid.UUID | None = None
 
 
 DEV_ORGANIZATION_ID = uuid.UUID("6c0e9b55-4f6d-4e60-90c5-8cf4c4f3f5a0")
 
 
 def _dev_context(token: str | None) -> AuthContext:
-    roles = {
-        "dev-marketplace-admin": {"Marketplace Admin"},
-        "dev-catalog-moderator": {"Catalog Moderator"},
-        "dev-operations": {"Operations/Disputes"},
-        "dev-finance": {"Finance/Payouts"},
-    }.get(token or "", {"Marketplace Admin"})
-    return AuthContext(subject="local-dev", organization_id=DEV_ORGANIZATION_ID, roles=frozenset(roles))
+    contexts = {
+        "dev-marketplace-admin": ("local-admin", {"Marketplace Admin"}),
+        "dev-catalog-moderator": ("local-moderator", {"Catalog Moderator"}),
+        "dev-operations": ("local-operations", {"Operations/Disputes"}),
+        "dev-finance": ("local-finance", {"Finance/Payouts"}),
+        "dev-seller": ("local-seller", {"Seller"}),
+        "dev-customer": ("local-customer", {"Customer"}),
+    }
+    if token and token not in contexts:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid local demo access token")
+    subject, roles = contexts.get(token or "", ("local-dev", {"Marketplace Admin"}))
+    return AuthContext(subject=subject, organization_id=DEV_ORGANIZATION_ID, roles=frozenset(roles))
+
+
+def create_local_access_token(
+    subject: str,
+    organization_id: uuid.UUID,
+    roles: frozenset[str],
+    seller_id: uuid.UUID | None,
+    settings: Settings,
+) -> str:
+    expires_at = datetime.now(timezone.utc) + timedelta(minutes=settings.local_access_token_minutes)
+    payload: dict[str, Any] = {
+        "sub": subject,
+        "organization_id": str(organization_id),
+        "roles": list(roles),
+        "exp": expires_at,
+        "iat": datetime.now(timezone.utc),
+        "iss": "argo-marketplace-local",
+    }
+    if seller_id:
+        payload["seller_id"] = str(seller_id)
+    return f"demo.{jwt.encode(payload, settings.local_auth_secret, algorithm='HS256')}"
+
+
+def _verify_local_access_token(token: str, settings: Settings) -> AuthContext:
+    try:
+        raw_token = token.removeprefix("demo.")
+        payload = jwt.decode(raw_token, settings.local_auth_secret, algorithms=["HS256"], issuer="argo-marketplace-local")
+        organization_id = uuid.UUID(str(payload["organization_id"]))
+        roles = frozenset(str(role) for role in payload.get("roles", []))
+        raw_seller_id = payload.get("seller_id")
+        seller_id = uuid.UUID(str(raw_seller_id)) if raw_seller_id else None
+        if not roles:
+            raise ValueError("Local token has no roles")
+        return AuthContext(subject=str(payload["sub"]), organization_id=organization_id, roles=roles, seller_id=seller_id)
+    except (JWTError, KeyError, ValueError, TypeError) as exc:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid local access token") from exc
 
 
 def _claim(payload: dict[str, Any], path: str, default: Any = None) -> Any:
@@ -61,13 +104,22 @@ def _verify_argo_token(token: str, settings: Settings) -> AuthContext:
         organization_id = uuid.UUID(str(_claim(payload, settings.argo_jwt_organization_claim)))
         raw_roles = _claim(payload, settings.argo_jwt_roles_claim, [])
         roles = frozenset(raw_roles if isinstance(raw_roles, list) else [str(raw_roles)])
-        return AuthContext(subject=str(payload.get("sub", "unknown")), organization_id=organization_id, roles=roles)
+        raw_seller_id = _claim(payload, settings.argo_jwt_seller_claim)
+        seller_id = uuid.UUID(str(raw_seller_id)) if raw_seller_id else None
+        return AuthContext(
+            subject=str(payload.get("sub", "unknown")),
+            organization_id=organization_id,
+            roles=roles,
+            seller_id=seller_id,
+        )
     except (JWTError, KeyError, StopIteration, ValueError, OSError) as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid ARGO access token") from exc
 
 
 def get_auth_context(credentials: HTTPAuthorizationCredentials | None = Depends(bearer), settings: Settings = Depends(get_settings)) -> AuthContext:
     if settings.argo_auth_mode == "dev":
+        if credentials and credentials.credentials.startswith("demo."):
+            return _verify_local_access_token(credentials.credentials, settings)
         return _dev_context(credentials.credentials if credentials else None)
     if not credentials:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Bearer token required")

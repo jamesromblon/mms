@@ -13,6 +13,9 @@ class Settings(BaseSettings):
     argo_jwt_jwks_url: str = ""
     argo_jwt_organization_claim: str = "organization_id"
     argo_jwt_roles_claim: str = "roles"
+    argo_jwt_seller_claim: str = "seller_id"
+    local_auth_secret: str = Field(default="local-only-change-this-secret", validation_alias="LOCAL_AUTH_SECRET")
+    local_access_token_minutes: int = Field(default=480, validation_alias="LOCAL_ACCESS_TOKEN_MINUTES")
     cors_origins: str = "http://localhost:5173"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore", case_sensitive=False)

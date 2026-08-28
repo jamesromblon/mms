@@ -6,7 +6,7 @@ from pydantic import ValidationError
 import pytest
 
 from app.main import app
-from app.schemas import ProductBulkDelete, ProductCreate
+from app.schemas import CheckoutCreate, ProductBulkDelete, ProductCreate, SellerApplicationCreate
 
 client = TestClient(app)
 
@@ -63,3 +63,33 @@ def test_product_bulk_delete_payload_rejects_duplicate_ids() -> None:
 
     with pytest.raises(ValidationError):
         ProductBulkDelete(product_ids=[product_id, product_id])
+
+
+def test_checkout_requires_supported_payment_method_and_complete_address() -> None:
+    payload = CheckoutCreate(
+        items=[{"product_id": uuid.uuid4(), "quantity": 1}],
+        customer_name="Mika Reyes",
+        customer_email="mika@example.com",
+        delivery_address="Makati City, Metro Manila",
+        payment_method="GCash",
+    )
+
+    assert payload.payment_method == "GCash"
+
+    with pytest.raises(ValidationError):
+        CheckoutCreate(
+            items=[{"product_id": uuid.uuid4(), "quantity": 1}],
+            customer_name="Mika Reyes",
+            customer_email="mika@example.com",
+            delivery_address="short",
+            payment_method="GCash",
+        )
+
+
+def test_seller_application_validates_email() -> None:
+    with pytest.raises(ValidationError):
+        SellerApplicationCreate(
+            business_name="Example Shop",
+            owner_name="Aira Flores",
+            email="not-an-email",
+        )

@@ -132,6 +132,90 @@ class Payout(TimestampMixin, Base):
     generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class OrderItem(TimestampMixin, Base):
+    __tablename__ = "order_items"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    organization_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), index=True)
+    order_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("orders.id", ondelete="CASCADE"), index=True)
+    product_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("products.id", ondelete="SET NULL"))
+    seller_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("sellers.id", ondelete="RESTRICT"), index=True)
+    product_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    quantity: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    unit_price: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    line_total: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+
+
+class OrderCustomer(TimestampMixin, Base):
+    __tablename__ = "order_customers"
+    __table_args__ = (UniqueConstraint("order_id", name="uq_order_customer_order"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    organization_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), index=True)
+    order_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("orders.id", ondelete="CASCADE"), index=True)
+    subject: Mapped[str] = mapped_column(String(160), nullable=False, index=True)
+    full_name: Mapped[str] = mapped_column(String(160), nullable=False)
+    email: Mapped[str] = mapped_column(String(200), nullable=False)
+    delivery_address: Mapped[str] = mapped_column(String(300), nullable=False)
+
+
+class MarketplaceUser(TimestampMixin, Base):
+    __tablename__ = "marketplace_users"
+    __table_args__ = (UniqueConstraint("organization_id", "subject", name="uq_marketplace_user_subject"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    organization_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), index=True)
+    subject: Mapped[str] = mapped_column(String(160), nullable=False)
+    email: Mapped[str] = mapped_column(String(200), nullable=False)
+    full_name: Mapped[str] = mapped_column(String(160), nullable=False)
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    seller_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("sellers.id", ondelete="SET NULL"), index=True)
+    role: Mapped[str] = mapped_column(String(32), default="Customer")
+    status: Mapped[str] = mapped_column(String(24), default="Active")
+
+
+class SellerApplication(TimestampMixin, Base):
+    __tablename__ = "seller_applications"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    organization_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), index=True)
+    business_name: Mapped[str] = mapped_column(String(160), nullable=False)
+    owner_name: Mapped[str] = mapped_column(String(160), nullable=False)
+    email: Mapped[str] = mapped_column(String(200), nullable=False)
+    phone: Mapped[str | None] = mapped_column(String(40))
+    status: Mapped[str] = mapped_column(String(32), default="Pending Approval")
+    decision_note: Mapped[str | None] = mapped_column(Text)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class Payment(TimestampMixin, Base):
+    __tablename__ = "payments"
+    __table_args__ = (UniqueConstraint("order_id", name="uq_payment_order"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    organization_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), index=True)
+    order_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("orders.id", ondelete="CASCADE"), index=True)
+    method: Mapped[str] = mapped_column(String(32), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), default="Pending")
+    reference: Mapped[str | None] = mapped_column(String(120))
+    paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class CommissionLedger(TimestampMixin, Base):
+    __tablename__ = "commission_ledger"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    organization_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), index=True)
+    seller_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("sellers.id", ondelete="RESTRICT"), index=True)
+    order_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("orders.id", ondelete="SET NULL"), index=True)
+    gross_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    commission_rate: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False)
+    commission_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    status: Mapped[str] = mapped_column(String(24), default="Due")
+    due_on: Mapped[date] = mapped_column(Date, nullable=False)
+    paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class Policy(TimestampMixin, Base):
     __tablename__ = "policies"
     __table_args__ = (UniqueConstraint("organization_id", "kind", name="uq_policy_org_kind"),)
@@ -140,4 +224,3 @@ class Policy(TimestampMixin, Base):
     organization_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), index=True)
     kind: Mapped[str] = mapped_column(String(32), nullable=False)
     configuration: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
-

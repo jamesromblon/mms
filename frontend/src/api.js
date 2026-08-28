@@ -3,7 +3,8 @@ import { useMemo, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { dashboardData } from './data'
 
-const apiMode = import.meta.env.VITE_API_MODE || 'api'
+const apiMode = import.meta.env.MODE === 'test' ? 'mock' : (import.meta.env.VITE_API_MODE || 'api')
+export const isApiMode = apiMode === 'api'
 const client = axios.create({ baseURL: `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/marketplace`, timeout: 8000 })
 
 client.interceptors.request.use((config) => {
@@ -55,7 +56,10 @@ export function useMarketplaceList(resource, fallback, params = {}, normalize = 
     enabled: apiMode === 'api',
     initialData: apiMode === 'api' ? undefined : { items: fallback },
   })
-  const items = useMemo(() => (query.data?.items || (apiMode === 'api' ? [] : fallback)).map((item) => normalizeRef.current(item)), [fallback, query.data])
+  const items = useMemo(() => {
+    const source = query.data?.items || (apiMode === 'api' && !query.isError ? [] : fallback)
+    return source.map((item) => normalizeRef.current(item))
+  }, [fallback, query.data, query.isError])
   return { ...query, items, isLive: apiMode === 'api' && Boolean(query.data) }
 }
 

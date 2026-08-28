@@ -1,8 +1,10 @@
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter } from 'react-router-dom'
-import { expect, test } from 'vitest'
+import { afterEach, expect, test } from 'vitest'
 import App from '../App'
+
+afterEach(() => localStorage.clear())
 
 function renderApp(path = '/dashboard') {
   window.history.pushState({}, '', path)
@@ -11,10 +13,50 @@ function renderApp(path = '/dashboard') {
 }
 
 test('renders the marketplace dashboard shell', () => {
-  renderApp()
+  renderApp('/dashboard')
   expect(screen.getByText('Marketplace')).toBeInTheDocument()
   expect(screen.getByRole('heading', { name: 'Dashboard' })).toBeInTheDocument()
   expect(screen.getByText('GMV Trend')).toBeInTheDocument()
+})
+
+test('renders the public customer marketplace landing page', () => {
+  renderApp('/')
+
+  expect(screen.getByRole('heading', { name: /Find useful products/ })).toBeInTheDocument()
+  expect(screen.getByRole('link', { name: /Browse marketplace/ })).toHaveAttribute('href', '/marketplace')
+  expect(screen.getByRole('link', { name: 'Proceed to login' })).toHaveAttribute('href', '/login')
+})
+
+test('renders seller product workspace separately from admin catalog', () => {
+  localStorage.setItem('argo_access_token', 'dev-seller')
+  localStorage.setItem('argo_portal_role', 'seller')
+  renderApp('/seller/products')
+
+  expect(screen.getByRole('heading', { name: 'My products' })).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: /New product/ })).toBeInTheDocument()
+  localStorage.clear()
+})
+
+test('blocks a customer from opening the seller workspace', () => {
+  localStorage.setItem('argo_access_token', 'demo.customer')
+  localStorage.setItem('argo_portal_role', 'customer')
+  renderApp('/seller')
+
+  expect(screen.getByRole('heading', { name: 'Sign in as a seller' })).toBeInTheDocument()
+  localStorage.clear()
+})
+
+test('shows and hides the login password', () => {
+  renderApp('/login')
+
+  const password = screen.getByLabelText('Password')
+  expect(password).toHaveAttribute('type', 'password')
+
+  fireEvent.click(screen.getByRole('button', { name: 'Show password' }))
+  expect(password).toHaveAttribute('type', 'text')
+
+  fireEvent.click(screen.getByRole('button', { name: 'Hide password' }))
+  expect(password).toHaveAttribute('type', 'password')
 })
 
 test('compacts and expands the desktop sidebar control', () => {
@@ -30,21 +72,11 @@ test('compacts and expands the desktop sidebar control', () => {
   )
 })
 
-test('opens a complete create-product form', () => {
+test('keeps admin catalog oversight separate from seller creation', () => {
   renderApp('/products')
 
-  fireEvent.click(screen.getByRole('button', { name: 'New Product' }))
-
-  const dialog = screen.getByRole('dialog', { name: 'New product' })
-  const modal = within(dialog)
-  expect(dialog).toBeInTheDocument()
-  expect(modal.getByLabelText(/Product name/)).toBeInTheDocument()
-  expect(modal.getByLabelText(/^SKU/)).toBeInTheDocument()
-  expect(modal.getByLabelText(/^Unit price/)).toBeInTheDocument()
-  expect(modal.getByLabelText(/^Seller/)).toBeInTheDocument()
-  expect(modal.getByLabelText(/^Category/)).toBeInTheDocument()
-  expect(modal.getByLabelText(/^Stock on hand/)).toBeInTheDocument()
-  expect(modal.getByText('Pending Review')).toBeInTheDocument()
+  expect(screen.getByRole('heading', { name: 'Products' })).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'New Product' })).not.toBeInTheDocument()
 })
 
 test('offers a proper Excel export from products', () => {
@@ -72,6 +104,13 @@ test('opens category correction in the product edit form', () => {
   fireEvent.click(app.getAllByRole('button', { name: /^Edit product / })[0])
 
   const modal = within(app.getByRole('dialog', { name: 'Edit product' }))
+  expect(modal.getByLabelText(/Product name/)).toBeInTheDocument()
+  expect(modal.getByLabelText(/^SKU/)).toBeInTheDocument()
+  expect(modal.getByLabelText(/^Seller/)).toBeInTheDocument()
   expect(modal.getByLabelText(/Category/)).not.toHaveValue('')
+  expect(modal.getByLabelText(/^Price/)).toBeInTheDocument()
+  expect(modal.getByLabelText(/^Stock/)).toBeInTheDocument()
+  expect(modal.getByLabelText(/^Description/)).toBeInTheDocument()
+  expect(modal.getByLabelText(/^Image URL/)).toBeInTheDocument()
   expect(modal.getByRole('option', { name: 'Electronics' })).toBeInTheDocument()
 })

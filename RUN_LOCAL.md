@@ -35,7 +35,7 @@ Open the local URL shown by Vite, normally:
 http://localhost:5173/dashboard
 ```
 
-The frontend uses the Supabase-backed API by default. All supported catalog, order, review, dispute, payout, category, and policy actions persist to the database. Set `VITE_API_MODE=mock` only for isolated UI development.
+The frontend uses the Supabase-backed API by default. The public customer landing page is `/`, the customer catalog is `/marketplace`, the seller workspace is `/seller`, and the admin portal is `/dashboard`. Set `VITE_API_MODE=mock` only for isolated UI development.
 
 ## 3. Supabase-backed API setup
 
@@ -110,6 +110,10 @@ VITE_API_URL=http://127.0.0.1:8000
 Then restart `npm run dev` from the `frontend` folder.
 
 Do not place Supabase passwords, service-role keys, JWT signing keys, or database URLs in `frontend/.env.local`; browser environment variables are not secret.
+
+The second migration adds seller applications, order lines, customer order ownership, payment state, and the commission ledger. Run `alembic upgrade head` before testing checkout, seller orders, seller balances, or admin commission controls. The seeded local tenant includes realistic seller applications and commission examples.
+
+Payment selection is implemented as a safe order/payment state flow. Cash, GCash, PayMaya, and bank transfer are recorded as pending until a payment provider or finance verification integration is connected. No real money is moved by the local demo.
 
 ## 5. Validation commands
 

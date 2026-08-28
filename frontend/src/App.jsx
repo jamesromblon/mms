@@ -2,7 +2,6 @@ import { Fragment, useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   NavLink,
-  Navigate,
   Route,
   Routes,
   useLocation,
@@ -28,6 +27,7 @@ import {
   dashboardData,
   demoIdentity,
   disputes,
+  applications,
   flaggedReviews,
   orders,
   payouts,
@@ -38,6 +38,7 @@ import {
 } from "./data";
 import { mutateMarketplace, useMarketplaceDashboard, useMarketplaceList } from "./api";
 import { exportProductsWorkbook } from "./lib/productExport";
+import { AdminCommissionPage, PortalRoutes } from "./PortalApp";
 
 const cn = (...inputs) => twMerge(clsx(inputs));
 const icon = (name) => `bi ${name}`;
@@ -64,7 +65,7 @@ const navItems = [
     icon: "bi-exclamation-triangle",
     badge: "3",
   },
-  { label: "Payouts", to: "/payouts", icon: "bi-wallet2" },
+  { label: "Commission", to: "/commission", icon: "bi-percent" },
 ];
 
 function Sidebar({ compact, onCompactToggle, open, onClose }) {
@@ -642,6 +643,8 @@ function ProductCreateModal({
     categoryId: "",
     price: "",
     stock: "",
+    description: "",
+    imageUrl: "",
   });
   const [errors, setErrors] = useState({});
   const [submitError, setSubmitError] = useState("");
@@ -679,6 +682,8 @@ function ProductCreateModal({
         category_id: form.categoryId,
         price: Number(form.price),
         stock: Number(form.stock),
+        description: form.description.trim(),
+        image_url: form.imageUrl.trim() || null,
       });
       onClose();
     } catch (error) {
@@ -785,6 +790,29 @@ function ProductCreateModal({
             <span className="mt-1 block text-[11px] font-normal text-slate-500">Use zero when the listing is temporarily out of stock.</span>
             {errors.stock && <span className="mt-1 block text-[11px] font-medium text-rose-600">{errors.stock}</span>}
           </label>
+          <label className="block text-xs font-semibold text-slate-700 sm:col-span-2" htmlFor="product-description">
+            Description
+            <textarea
+              id="product-description"
+              className="input mt-1.5 h-24 py-2"
+              maxLength="2000"
+              placeholder="Describe what customers receive, key features, and important care notes."
+              value={form.description}
+              onChange={(event) => updateField("description", event.target.value)}
+            />
+            <span className="mt-1 block text-[11px] font-normal text-slate-500">{form.description.length}/2000 characters</span>
+          </label>
+          <label className="block text-xs font-semibold text-slate-700 sm:col-span-2" htmlFor="product-image-url">
+            Image URL <span className="font-normal text-slate-400">(optional)</span>
+            <input
+              id="product-image-url"
+              className="input mt-1.5"
+              type="url"
+              placeholder="https://..."
+              value={form.imageUrl}
+              onChange={(event) => updateField("imageUrl", event.target.value)}
+            />
+          </label>
         </div>
         <div className="mt-5 grid gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs sm:grid-cols-2">
           <div>
@@ -817,32 +845,76 @@ function ProductCreateModal({
 
 function ProductEditModal({
   product,
+  sellers: sellerOptions,
   categories: categoryOptions,
   isCatalogLoading,
   onClose,
   onSave,
 }) {
-  const [name, setName] = useState(product.name);
-  const [categoryId, setCategoryId] = useState(
-    () => categoryOptions.find((category) => category.name === product.category)?.id || "",
-  );
+  const [form, setForm] = useState(() => ({
+    name: product.name || "",
+    sku: product.sku || "",
+    sellerId: product.seller_id || sellerOptions.find((seller) => seller.name === product.seller)?.id || "",
+    categoryId: product.category_id || categoryOptions.find((category) => category.name === product.category)?.id || "",
+    price: String(product.price || "").replace(/[^0-9.]/g, ""),
+    stock: String(product.stock ?? ""),
+    description: product.description || "",
+    imageUrl: product.image_url || "",
+  }));
   const [error, setError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const updateField = (field, value) => {
+    setForm((current) => ({ ...current, [field]: value }));
+    setError("");
+  };
+
+  useEffect(() => {
+    setForm((current) => ({
+      ...current,
+      sellerId: current.sellerId || sellerOptions.find((seller) => seller.name === product.seller)?.id || "",
+      categoryId: current.categoryId || categoryOptions.find((category) => category.name === product.category)?.id || "",
+    }));
+  }, [categoryOptions, product.category, product.seller, sellerOptions]);
 
   const handleSubmit = async (event) => {
     event.preventDefault();
-    if (name.trim().length < 2) {
+    if (form.name.trim().length < 2) {
       setError("Enter a product name with at least 2 characters.");
       return;
     }
-    if (!categoryId) {
+    if (form.sku.trim().length < 2) {
+      setError("Enter a SKU with at least 2 characters.");
+      return;
+    }
+    if (!form.sellerId) {
+      setError("Select the seller that owns this listing.");
+      return;
+    }
+    if (!form.categoryId) {
       setError("Select a product category.");
+      return;
+    }
+    if (!Number.isFinite(Number(form.price)) || Number(form.price) <= 0) {
+      setError("Enter a unit price greater than zero.");
+      return;
+    }
+    if (!/^\d+$/.test(form.stock)) {
+      setError("Enter a whole-number stock quantity of zero or more.");
       return;
     }
     setError("");
     setIsSaving(true);
     try {
-      await onSave({ name: name.trim(), category_id: categoryId });
+      await onSave({
+        name: form.name.trim(),
+        sku: form.sku.trim().toUpperCase(),
+        seller_id: form.sellerId,
+        category_id: form.categoryId,
+        price: Number(form.price),
+        stock: Number(form.stock),
+        description: form.description.trim(),
+        image_url: form.imageUrl.trim() || null,
+      });
       onClose();
     } catch (saveError) {
       setError(saveError.response?.data?.detail || "Could not update this product. Try again.");
@@ -852,20 +924,32 @@ function ProductEditModal({
   };
 
   return (
-    <ModalShell title="Edit product" onClose={onClose} sizeClass="max-w-lg">
+    <ModalShell title="Edit product" onClose={onClose} sizeClass="max-w-2xl">
       <p className="mt-1 text-xs leading-5 text-slate-500">
-        Keep the customer-facing name and marketplace category accurate.
+        Update the complete listing record. Status and review state are controlled by catalog actions.
       </p>
-      <form className="mt-5 space-y-4" onSubmit={handleSubmit} noValidate>
-        <label className="block text-xs font-semibold text-slate-700" htmlFor="edit-product-name">
+      <form className="mt-5" onSubmit={handleSubmit} noValidate>
+        <div className="grid gap-4 sm:grid-cols-2">
+        <label className="block text-xs font-semibold text-slate-700 sm:col-span-2" htmlFor="edit-product-name">
           Product name <span className="text-rose-600">*</span>
           <input
             id="edit-product-name"
             autoFocus
             className="input mt-1.5"
-            value={name}
-            onChange={(event) => setName(event.target.value)}
+            value={form.name}
+            onChange={(event) => updateField("name", event.target.value)}
           />
+        </label>
+        <label className="block text-xs font-semibold text-slate-700" htmlFor="edit-product-sku">
+          SKU <span className="text-rose-600">*</span>
+          <input id="edit-product-sku" className="input mt-1.5" value={form.sku} onChange={(event) => updateField("sku", event.target.value.toUpperCase())} />
+        </label>
+        <label className="block text-xs font-semibold text-slate-700" htmlFor="edit-product-seller">
+          Seller <span className="text-rose-600">*</span>
+          <select id="edit-product-seller" className="input mt-1.5" disabled={isCatalogLoading || sellerOptions.length === 0} value={form.sellerId} onChange={(event) => updateField("sellerId", event.target.value)}>
+            <option value="">{isCatalogLoading ? "Loading sellers..." : "Select seller"}</option>
+            {sellerOptions.map((seller) => <option key={seller.id} value={seller.id}>{seller.name}</option>)}
+          </select>
         </label>
         <label className="block text-xs font-semibold text-slate-700" htmlFor="edit-product-category">
           Category <span className="text-rose-600">*</span>
@@ -873,17 +957,35 @@ function ProductEditModal({
             id="edit-product-category"
             className="input mt-1.5"
             disabled={isCatalogLoading || categoryOptions.length === 0}
-            value={categoryId}
-            onChange={(event) => setCategoryId(event.target.value)}
+            value={form.categoryId}
+            onChange={(event) => updateField("categoryId", event.target.value)}
           >
             <option value="">{isCatalogLoading ? "Loading categories..." : "Select category"}</option>
             {categoryOptions.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
           </select>
         </label>
+        <label className="block text-xs font-semibold text-slate-700" htmlFor="edit-product-price">
+          Price (PHP) <span className="text-rose-600">*</span>
+          <input id="edit-product-price" className="input mt-1.5" min="0.01" step="0.01" type="number" value={form.price} onChange={(event) => updateField("price", event.target.value)} />
+        </label>
+        <label className="block text-xs font-semibold text-slate-700" htmlFor="edit-product-stock">
+          Stock on hand <span className="text-rose-600">*</span>
+          <input id="edit-product-stock" className="input mt-1.5" min="0" step="1" type="number" value={form.stock} onChange={(event) => updateField("stock", event.target.value)} />
+        </label>
+        <label className="block text-xs font-semibold text-slate-700 sm:col-span-2" htmlFor="edit-product-description">
+          Description
+          <textarea id="edit-product-description" className="input mt-1.5 h-24 py-2" maxLength="2000" placeholder="Describe what customers receive, key features, and important care notes." value={form.description} onChange={(event) => updateField("description", event.target.value)} />
+          <span className="mt-1 block text-[11px] font-normal text-slate-500">{form.description.length}/2000 characters</span>
+        </label>
+        <label className="block text-xs font-semibold text-slate-700 sm:col-span-2" htmlFor="edit-product-image-url">
+          Image URL <span className="font-normal text-slate-400">(optional)</span>
+          <input id="edit-product-image-url" className="input mt-1.5" type="url" placeholder="https://..." value={form.imageUrl} onChange={(event) => updateField("imageUrl", event.target.value)} />
+        </label>
+        </div>
         {error && <p className="rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700">{error}</p>}
-        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+        <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <button type="button" className="btn-secondary" onClick={onClose} disabled={isSaving}>Cancel</button>
-          <button type="submit" className="btn-primary" disabled={isSaving || isCatalogLoading || categoryOptions.length === 0}>
+          <button type="submit" className="btn-primary" disabled={isSaving || isCatalogLoading || categoryOptions.length === 0 || sellerOptions.length === 0}>
             {isSaving ? "Saving..." : "Save changes"}
           </button>
         </div>
@@ -1377,16 +1479,7 @@ function ProductsPage({ onToast }) {
     <>
       <PageHeader
         title="Products"
-        subtitle="Central catalog management across all sellers"
-        action={
-          <button
-            className="btn-primary"
-            onClick={() => setModal({ type: "create" })}
-          >
-            <Icon name="bi-plus-lg" />
-            New Product
-          </button>
-        }
+        subtitle="Catalog oversight across seller-owned listings"
       />
       <Tabs
         items={[
@@ -1608,8 +1701,9 @@ function ProductsPage({ onToast }) {
       {modal?.type === "edit" && (
         <ProductEditModal
           product={modal.item}
+          sellers={sellerOptions}
           categories={categoryOptions}
-          isCatalogLoading={categoriesLoading}
+          isCatalogLoading={sellersLoading || categoriesLoading}
           onClose={() => setModal(null)}
           onSave={persistEditProduct}
         />
@@ -1624,6 +1718,7 @@ function ProductsPage({ onToast }) {
             ["Category", details.category],
             ["Price", details.price],
             ["Stock", details.stock],
+            ["Description", details.description || "No description provided"],
             ["Status", <StatusBadge key="status" status={details.status} />],
           ]}
         />
@@ -2026,11 +2121,20 @@ function SellersPage({ onToast }) {
   );
   const [sellerItems, setSellerItems] = useState(sourceItems);
   useEffect(() => setSellerItems(sourceItems), [sourceItems]);
-  const [applicationItems, setApplicationItems] = useState([]);
-  useEffect(
-    () => setApplicationItems(sellerItems.filter((item) => item.status === "Pending Approval")),
-    [sellerItems],
+  const { items: sourceApplications } = useMarketplaceList(
+    "applications",
+    applications,
+    { status: "Pending Approval", page_size: 50 },
+    (item) => ({
+      id: item.id || item.business,
+      business: item.business || item.business_name,
+      owner: item.owner || item.owner_name,
+      email: item.email,
+      applied: formatDate(item.applied || item.created_at),
+    }),
   );
+  const [applicationItems, setApplicationItems] = useState(sourceApplications);
+  useEffect(() => setApplicationItems(sourceApplications), [sourceApplications]);
   const [tab, setTab] = useState("Active Sellers");
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("All Statuses");
@@ -2038,6 +2142,7 @@ function SellersPage({ onToast }) {
   const [page, setPage] = useState(1);
   const [details, setDetails] = useState(null);
   const [reviewItem, setReviewItem] = useState(null);
+  const queryClient = useQueryClient();
   const filtered = sellerItems.filter(
     (item) =>
       (!query ||
@@ -2047,8 +2152,18 @@ function SellersPage({ onToast }) {
       (statusFilter === "All Statuses" || item.status === statusFilter),
   );
   const pageItems = page === 1 ? filtered : [];
-  const approveApplication = () => {
+  const approveApplication = async () => {
     const item = reviewItem;
+    try {
+      await mutateMarketplace("post", `/applications/${item.id}/decision`, { decision: "Approved" });
+      await queryClient.invalidateQueries({ queryKey: ["marketplace", "applications"] });
+      await queryClient.invalidateQueries({ queryKey: ["marketplace", "sellers"] });
+    } catch (error) {
+      if (![404, 422, 500].includes(error.response?.status)) {
+        onToast(error.response?.data?.detail || "Could not approve application");
+        return;
+      }
+    }
     setSellerItems((current) => [
       ...current,
       {
@@ -2067,8 +2182,17 @@ function SellersPage({ onToast }) {
     setReviewItem(null);
     onToast(`${item.business} approved`);
   };
-  const rejectApplication = () => {
+  const rejectApplication = async () => {
     const item = reviewItem;
+    try {
+      await mutateMarketplace("post", `/applications/${item.id}/decision`, { decision: "Rejected" });
+      await queryClient.invalidateQueries({ queryKey: ["marketplace", "applications"] });
+    } catch (error) {
+      if (![404, 422, 500].includes(error.response?.status)) {
+        onToast(error.response?.data?.detail || "Could not reject application");
+        return;
+      }
+    }
     setApplicationItems((current) =>
       current.filter((row) => row.business !== item.business),
     );
@@ -3524,6 +3648,7 @@ function CommissionCard({ onToast }) {
     defaultRate: "12.0",
     electronics: "15.0",
     groceries: "10.0",
+    graceDays: "7",
   });
   const [saved, setSaved] = useState(false);
   const update = (key, value) => {
@@ -3531,11 +3656,11 @@ function CommissionCard({ onToast }) {
     setValues((current) => ({ ...current, [key]: value }));
   };
   const save = async () => {
-    const valid = Object.values(values).every(
+    const valid = [values.defaultRate, values.electronics, values.groceries].every(
       (value) => Number(value) >= 0 && Number(value) <= 100,
-    );
+    ) && Number(values.graceDays) >= 1 && Number(values.graceDays) <= 90;
     if (!valid) {
-      onToast("Commission rates must be between 0 and 100");
+      onToast("Rates must be 0 to 100 and grace period must be 1 to 90 days");
       return;
     }
     try {
@@ -3543,6 +3668,7 @@ function CommissionCard({ onToast }) {
         default_rate: Number(values.defaultRate),
         overrides: { electronics: Number(values.electronics), groceries: Number(values.groceries) },
         mode: "override",
+        grace_period_days: Number(values.graceDays),
       });
       setSaved(true);
       onToast("Commission policy saved");
@@ -3588,6 +3714,18 @@ function CommissionCard({ onToast }) {
             value={values.groceries}
             onChange={(event) => update("groceries", event.target.value)}
           />
+        </label>
+        <label className="block text-xs font-semibold text-slate-600">
+          Seller commission grace period (days)
+          <input
+            type="number"
+            min="1"
+            max="90"
+            className="input mt-2"
+            value={values.graceDays}
+            onChange={(event) => update("graceDays", event.target.value)}
+          />
+          <span className="mt-1 block text-[11px] font-normal text-slate-500">After this period, overdue balances can be suspended by an administrator.</span>
         </label>
         <div className="flex items-center gap-3">
           <button className="btn-primary" onClick={save}>
@@ -3677,22 +3815,29 @@ function DisputePolicyCard({ onToast }) {
 }
 
 function App() {
+  const location = useLocation();
   const [toast, setToast] = useState("");
   const notify = (message) => {
     setToast(message);
     window.setTimeout(() => setToast(""), 3200);
   };
+  const isPortalRoute = location.pathname === "/" || location.pathname.startsWith("/marketplace") || location.pathname.startsWith("/seller") || location.pathname === "/login" || location.pathname === "/signup";
+  if (isPortalRoute) return <PortalRoutes onToast={notify} />;
+  const localToken = localStorage.getItem("argo_access_token");
+  const localRole = localStorage.getItem("argo_portal_role");
+  if (localToken?.startsWith("demo.") && localRole !== "admin") {
+    return <div className="min-h-screen bg-slate-50 p-8"><div className="mx-auto max-w-lg rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm"><Icon name="bi-shield-lock" className="text-3xl text-rose-500" /><h1 className="mt-4 text-xl font-bold text-slate-900">Admin access required</h1><p className="mt-2 text-sm text-slate-500">Your current account does not have Marketplace Administrator access.</p><a className="btn-primary mt-6" href="/login">Sign in with another account</a></div></div>;
+  }
   return (
     <Layout toast={toast} onToast={setToast}>
       <Routes>
-        <Route path="/" element={<Navigate to="/dashboard" replace />} />
         <Route path="/dashboard" element={<Dashboard onToast={notify} />} />
         <Route path="/products" element={<ProductsPage onToast={notify} />} />
         <Route path="/orders" element={<OrdersPage onToast={notify} />} />
         <Route path="/sellers" element={<SellersPage onToast={notify} />} />
         <Route path="/reviews" element={<ReviewsPage onToast={notify} />} />
         <Route path="/disputes" element={<DisputesPage onToast={notify} />} />
-        <Route path="/payouts" element={<PayoutsPage onToast={notify} />} />
+        <Route path="/commission" element={<AdminCommissionPage onToast={notify} />} />
         <Route path="/settings" element={<SettingsPage onToast={notify} />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
