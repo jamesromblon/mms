@@ -2,13 +2,14 @@ import axios from 'axios'
 import { useMemo, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { dashboardData } from './data'
+import { AUTH_TOKEN_KEY } from './authSession'
 
 const apiMode = import.meta.env.MODE === 'test' ? 'mock' : (import.meta.env.VITE_API_MODE || 'api')
 export const isApiMode = apiMode === 'api'
 const client = axios.create({ baseURL: `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/marketplace`, timeout: 8000 })
 
 client.interceptors.request.use((config) => {
-  const token = localStorage.getItem('argo_access_token')
+  const token = localStorage.getItem(AUTH_TOKEN_KEY)
   if (token) config.headers.Authorization = `Bearer ${token}`
   return config
 })

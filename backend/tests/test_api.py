@@ -58,6 +58,16 @@ def test_anonymous_and_legacy_dev_admin_access_are_disabled() -> None:
     assert legacy.status_code == 401
 
 
+def test_public_store_catalog_and_categories_do_not_require_a_session() -> None:
+    products_response = client.get("/api/marketplace/store/products")
+    categories_response = client.get("/api/marketplace/store/categories")
+
+    assert products_response.status_code == 200
+    assert categories_response.status_code == 200
+    assert all(item["status"] == "Active" for item in products_response.json()["items"])
+    assert all(item["status"] == "Active" for item in categories_response.json()["items"])
+
+
 def test_product_create_payload_strips_required_text_fields() -> None:
     payload = ProductCreate(
         name="  Bamboo Drawer Organiser  ",

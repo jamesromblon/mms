@@ -285,22 +285,22 @@ def list_store_products(
     page: int = 1,
     page_size: int = 24,
     db: Session = Depends(get_db),
-    context: AuthContext = Depends(get_auth_context),
 ) -> ListResponse[ProductRead]:
+    organization_id = DEV_ORGANIZATION_ID
     offset, limit = _page(page, page_size)
     query = (
         select(Product, Seller.business_name, Category.name)
         .join(Seller, Product.seller_id == Seller.id)
         .join(Category, Product.category_id == Category.id)
         .where(
-            Product.organization_id == context.organization_id,
+            Product.organization_id == organization_id,
             Product.status == "Active",
             Seller.status == "Active",
             Category.status == "Active",
         )
     )
     count_query = select(func.count(Product.id)).join(Seller, Product.seller_id == Seller.id).join(Category, Product.category_id == Category.id).where(
-        Product.organization_id == context.organization_id,
+        Product.organization_id == organization_id,
         Product.status == "Active",
         Seller.status == "Active",
         Category.status == "Active",
@@ -319,6 +319,20 @@ def list_store_products(
         page_size=limit,
         total=db.scalar(count_query) or 0,
     )
+
+
+@router.get("/store/categories", response_model=ListResponse[CategoryRead])
+def list_store_categories(db: Session = Depends(get_db)) -> ListResponse[CategoryRead]:
+    items = db.scalars(
+        select(Category)
+        .where(
+            Category.organization_id == DEV_ORGANIZATION_ID,
+            Category.status == "Active",
+        )
+        .order_by(Category.name)
+    ).all()
+    category_items = [CategoryRead.model_validate(item) for item in items]
+    return ListResponse(items=category_items, page=1, page_size=len(items) or 25, total=len(items))
 
 
 @router.get("/seller/products", response_model=ListResponse[ProductRead])

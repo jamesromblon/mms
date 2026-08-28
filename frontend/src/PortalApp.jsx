@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, Routes, Route, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { applications, categories, orders, products, sellers } from "./data";
 import { client, isApiMode, mutateMarketplace, useMarketplaceList } from "./api";
-import { clearAuthSession } from "./authSession";
+import { clearAuthSession, getAuthSession, getWorkspaceForRole } from "./authSession";
 
 const peso = (value) => `₱${Number(String(value ?? 0).replace(/[^0-9.-]/g, "") || 0).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const normalizeProduct = (item) => ({
@@ -25,9 +25,19 @@ function PortalIcon({ name }) {
 function PortalShell({ kind, children }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const session = getAuthSession();
+  const workspace = getWorkspaceForRole(session.role);
   const customer = kind === "customer";
+  const publicLinks = [["Home", "/", "bi-house"], ["Shop", "/marketplace", "bi-grid"]];
+  const accountLinks = session.role === "customer"
+    ? [["My orders", "/marketplace/orders", "bi-bag-check"]]
+    : session.role === "seller"
+      ? [["Seller workspace", "/seller", "bi-speedometer2"]]
+      : session.role === "admin"
+        ? [["Admin dashboard", "/dashboard", "bi-speedometer2"]]
+        : [["My orders", "/marketplace/orders", "bi-bag-check"], ["Sell on Argo", "/signup?role=seller", "bi-shop"]];
   const links = customer
-    ? [["Home", "/", "bi-house"], ["Shop", "/marketplace", "bi-grid"], ["My orders", "/marketplace/orders", "bi-bag-check"], ["Sell on Argo", "/signup?role=seller", "bi-shop"]]
+    ? [...publicLinks, ...accountLinks]
     : [["Home", "/", "bi-house"], ["Overview", "/seller", "bi-speedometer2"], ["My products", "/seller/products", "bi-box-seam"], ["Orders", "/seller/orders", "bi-receipt"], ["Commission", "/seller/commission", "bi-percent"]];
   const signOut = () => {
     clearAuthSession();
@@ -46,8 +56,8 @@ function PortalShell({ kind, children }) {
             {links.map(([label, to, icon]) => <Link key={to} to={to} className="rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 hover:text-blue-700"><PortalIcon name={icon} /> <span className="ml-1.5">{label}</span></Link>)}
           </nav>
           <div className="flex items-center gap-2">
-            <Link to="/dashboard" className="hidden rounded-lg px-3 py-2 text-xs font-semibold text-slate-500 hover:bg-slate-100 sm:inline-flex">Admin portal</Link>
-            {localStorage.getItem("argo_access_token") ? <button aria-label="Sign out" className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50" onClick={signOut}>Sign out</button> : <Link to="/login" className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50">Sign in</Link>}
+            {workspace && <Link to={workspace.to} className="hidden rounded-lg px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-50 sm:inline-flex">{workspace.label}</Link>}
+            {session.token ? <button aria-label="Sign out" className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50" onClick={signOut}>Sign out</button> : <Link to="/login" className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50">Sign in</Link>}
           </div>
         </div>
         <nav aria-label={`${kind} mobile navigation`} className="flex gap-1 overflow-x-auto border-t border-slate-100 px-4 py-2 md:hidden">
@@ -76,7 +86,54 @@ function ProductTile({ product, onAdd }) {
 }
 
 function LandingPage() {
-  return <PortalShell kind="customer"><section className="overflow-hidden rounded-3xl bg-slate-950 px-6 py-12 text-white sm:px-10 lg:grid lg:grid-cols-[1.1fr_0.9fr] lg:items-center lg:px-16 lg:py-20"><div><p className="text-xs font-bold uppercase tracking-[0.16em] text-blue-300">Argo Marketplace</p><h1 className="mt-4 max-w-xl text-4xl font-bold tracking-tight sm:text-5xl">Find useful products from sellers you can trust.</h1><p className="mt-5 max-w-lg text-base leading-7 text-slate-300">Browse local shops, compare listings, and check out with cash or your preferred e-wallet.</p><div className="mt-8 flex flex-wrap gap-3"><Link to="/marketplace" className="btn-primary bg-blue-600 hover:bg-blue-500">Browse marketplace <PortalIcon name="bi-arrow-right" /></Link><Link to="/login" className="inline-flex items-center justify-center gap-2 rounded-lg border border-white/20 px-4 py-2.5 text-sm font-semibold text-white hover:bg-white/10">Proceed to login</Link><Link to="/signup?role=seller" className="inline-flex items-center justify-center gap-2 rounded-lg border border-white/20 px-4 py-2.5 text-sm font-semibold text-white hover:bg-white/10">Open a seller shop</Link></div></div><div className="mt-10 grid grid-cols-2 gap-3 lg:mt-0 lg:pl-10"><div className="rounded-2xl border border-white/10 bg-white/10 p-5"><PortalIcon name="bi-shield-check" /><p className="mt-8 text-lg font-bold">Clear seller details</p><p className="mt-1 text-sm text-slate-300">Know who is fulfilling your order.</p></div><div className="mt-8 rounded-2xl border border-blue-400/30 bg-blue-600/80 p-5"><PortalIcon name="bi-wallet2" /><p className="mt-8 text-lg font-bold">Flexible payment</p><p className="mt-1 text-sm text-blue-100">Cash, GCash, PayMaya, or bank transfer.</p></div></div></section><section className="mt-10 grid gap-4 sm:grid-cols-3"><Link to="/marketplace" className="card p-5 hover:border-blue-300"><PortalIcon name="bi-search" /><h2 className="mt-4 font-bold">Shop the catalog</h2><p className="mt-1 text-sm text-slate-500">Explore products listed by approved sellers.</p></Link><Link to="/signup?role=seller" className="card p-5 hover:border-blue-300"><PortalIcon name="bi-shop-window" /><h2 className="mt-4 font-bold">Sell on Argo</h2><p className="mt-1 text-sm text-slate-500">Apply once, then manage your own listings.</p></Link><Link to="/login" className="card p-5 hover:border-blue-300"><PortalIcon name="bi-person-check" /><h2 className="mt-4 font-bold">Access your account</h2><p className="mt-1 text-sm text-slate-500">Track orders or manage your seller workspace.</p></Link></section></PortalShell>;
+  return (
+    <PortalShell kind="customer">
+      <section className="overflow-hidden rounded-3xl border border-blue-100 bg-white px-6 py-10 shadow-sm sm:px-10 lg:grid lg:grid-cols-[1.15fr_0.85fr] lg:items-center lg:px-14 lg:py-16">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.16em] text-blue-600">Argo Marketplace</p>
+          <h1 className="mt-4 max-w-2xl text-4xl font-bold tracking-tight text-slate-950 sm:text-5xl">Shop trusted local sellers in one place.</h1>
+          <p className="mt-5 max-w-lg text-base leading-7 text-slate-600">Browse approved products, choose a payment method, and track every order from your customer account.</p>
+          <div className="mt-8 flex flex-wrap gap-3">
+            <Link to="/marketplace" className="btn-primary">Browse marketplace <PortalIcon name="bi-arrow-right" /></Link>
+            <Link to="/login?role=customer" className="btn-secondary">Customer sign in</Link>
+          </div>
+        </div>
+        <figure className="mt-10 overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 lg:mt-0 lg:ml-10">
+          <img
+            alt="Coffee, woven goods, electronics, and household products from marketplace sellers"
+            className="aspect-[4/3] h-full w-full object-cover"
+            fetchpriority="high"
+            height="922"
+            src="/argo-marketplace-hero.jpg"
+            width="1200"
+          />
+        </figure>
+      </section>
+      <section className="mt-10 grid gap-4 sm:grid-cols-12" aria-labelledby="access-heading">
+        <div className="sm:col-span-12">
+          <h2 id="access-heading" className="text-2xl font-bold tracking-tight text-slate-950">Choose the right workspace</h2>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">Public browsing needs no account. Orders, selling tools, and administration stay inside their assigned roles.</p>
+        </div>
+        <Link to="/marketplace" className="rounded-2xl border border-blue-200 bg-blue-50 p-6 text-blue-950 transition hover:border-blue-400 sm:col-span-7">
+          <PortalIcon name="bi-bag" />
+          <h3 className="mt-5 text-lg font-bold">Customer marketplace</h3>
+          <p className="mt-2 max-w-md text-sm leading-6 text-blue-800">Browse publicly. Sign in as a customer to check out and track purchases.</p>
+        </Link>
+        <Link to="/signup?role=seller" className="rounded-2xl border border-slate-200 bg-white p-6 text-slate-900 transition hover:border-blue-300 sm:col-span-5">
+          <PortalIcon name="bi-shop-window" />
+          <h3 className="mt-5 text-lg font-bold">Seller workspace</h3>
+          <p className="mt-2 text-sm leading-6 text-slate-600">Apply for a seller account, then manage products, orders, and commission.</p>
+        </Link>
+        <Link to="/login?role=admin" className="flex flex-col justify-between gap-4 rounded-2xl border border-slate-200 bg-slate-100 p-6 text-slate-950 transition hover:border-blue-400 sm:col-span-12 sm:flex-row sm:items-center">
+          <div>
+            <h3 className="text-lg font-bold">Marketplace administration</h3>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">Approved administrators monitor sellers, orders, reviews, disputes, commission, and marketplace policy.</p>
+          </div>
+          <span className="inline-flex shrink-0 items-center gap-2 text-sm font-semibold text-blue-700">Admin sign in <PortalIcon name="bi-arrow-right" /></span>
+        </Link>
+      </section>
+    </PortalShell>
+  );
 }
 
 function AuthPage({ signup = false }) {
@@ -144,21 +201,32 @@ function CheckoutPanel({ cart, onClose, onComplete }) {
 
 function CustomerPortal() {
   const location = useLocation();
+  const navigate = useNavigate();
+  const session = getAuthSession();
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("All categories");
   const [cart, setCart] = useState([]);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [confirmation, setConfirmation] = useState(null);
   const productQuery = useMarketplaceList("store/products", products, { page_size: 50 }, normalizeProduct);
-  const orderQuery = useQuery({ queryKey: ["portal", "customer-orders"], queryFn: () => client.get("/store/orders").then((response) => response.data.items || []), enabled: isApiMode, retry: false });
+  const viewingOrders = location.pathname === "/marketplace/orders";
+  const canCheckout = Boolean(session.token && session.role === "customer");
+  const orderQuery = useQuery({ queryKey: ["portal", "customer-orders"], queryFn: () => client.get("/store/orders").then((response) => response.data.items || []), enabled: isApiMode && viewingOrders && canCheckout, retry: false });
   const catalog = productQuery.items.length ? productQuery.items : products.map(normalizeProduct);
   const categoriesForFilter = Array.from(new Set(["All categories", ...categories.map((item) => item.name), ...catalog.map((item) => item.category)])).sort();
   const visible = catalog.filter((item) => (!query || `${item.name} ${item.seller} ${item.sku}`.toLowerCase().includes(query.toLowerCase())) && (category === "All categories" || item.category === category));
   const fallbackOrders = orders.slice(0, 3).map((item) => ({ order_number: item.id, seller_name: "Argo seller", item_count: item.items, total: Number(String(item.total).replace(/[^0-9.-]/g, "")), status: item.status, payment_method: "Cash", payment_status: item.status === "Completed" ? "Paid" : "Pending" }));
   const customerOrders = orderQuery.data?.length ? orderQuery.data : fallbackOrders;
   const addToCart = (product) => setCart((current) => { const existing = current.find((item) => item.product.id === product.id); return existing ? current.map((item) => item.product.id === product.id ? { ...item, quantity: Math.min(item.quantity + 1, product.stock) } : item) : [...current, { product, quantity: 1 }]; });
+  const openCheckout = () => {
+    if (!canCheckout) {
+      navigate("/login?role=customer");
+      return;
+    }
+    setCheckoutOpen(true);
+  };
   const completeOrder = (result) => { setCart([]); setCheckoutOpen(false); setConfirmation(result); };
-  return <PortalShell kind="customer">{location.pathname.endsWith("/orders") ? <><SectionHeading eyebrow="Customer account" title="My orders" text="Track the payment and fulfillment state of your Argo purchases." /><div className="space-y-3">{customerOrders.map((order) => <div key={order.order_number} className="card flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-xs font-bold text-slate-900">{order.order_number}</p><p className="mt-1 text-xs text-slate-500">{order.seller_name} · {order.item_count} item{order.item_count === 1 ? "" : "s"} · {order.payment_method}</p></div><div className="flex items-center gap-4"><div className="text-right"><p className="font-bold text-slate-900">{peso(order.total)}</p><p className="text-xs text-slate-500">Payment: {order.payment_status}</p></div><span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">{order.status}</span></div></div>)}</div></> : <><SectionHeading eyebrow="Customer marketplace" title="Shop the catalog" text="Compare approved listings from Argo sellers and add what you need to your cart." action={<button className="btn-primary" onClick={() => setCheckoutOpen(true)} disabled={!cart.length}><PortalIcon name="bi-cart3" /> Cart {cart.length ? `(${cart.reduce((sum, item) => sum + item.quantity, 0)})` : ""}</button>} /><div className="card mb-6 grid gap-3 p-3 sm:grid-cols-[1fr_190px]"><input aria-label="Search marketplace" className="input" placeholder="Search products or sellers..." value={query} onChange={(event) => setQuery(event.target.value)} /><select aria-label="Marketplace category" className="input" value={category} onChange={(event) => setCategory(event.target.value)}>{categoriesForFilter.map((item) => <option key={item}>{item}</option>)}</select></div><div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">{visible.map((product) => <ProductTile key={product.id} product={product} onAdd={addToCart} />)}</div>{!visible.length && <div className="card p-10 text-center text-sm text-slate-500">No products match this search.</div>}{checkoutOpen && <CheckoutPanel cart={cart} onClose={() => setCheckoutOpen(false)} onComplete={completeOrder} />}{confirmation && <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 px-4"><div className="w-full max-w-md rounded-2xl bg-white p-6 text-center shadow-2xl"><span className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-emerald-50 text-emerald-600"><PortalIcon name="bi-check-lg" /></span><h2 className="mt-4 text-xl font-bold text-slate-900">Order placed</h2><p className="mt-2 text-sm text-slate-500">Your payment is recorded as pending verification. You can track the order from My orders.</p><button className="btn-primary mt-6 w-full" onClick={() => setConfirmation(null)}>Continue shopping</button></div></div>}</>}</PortalShell>;
+  return <PortalShell kind="customer">{viewingOrders ? <><SectionHeading eyebrow="Customer account" title="My orders" text="Track the payment and fulfillment state of your Argo purchases." /><div className="space-y-3">{customerOrders.map((order) => <div key={order.order_number} className="card flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-xs font-bold text-slate-900">{order.order_number}</p><p className="mt-1 text-xs text-slate-500">{order.seller_name} · {order.item_count} item{order.item_count === 1 ? "" : "s"} · {order.payment_method}</p></div><div className="flex items-center gap-4"><div className="text-right"><p className="font-bold text-slate-900">{peso(order.total)}</p><p className="text-xs text-slate-500">Payment: {order.payment_status}</p></div><span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">{order.status}</span></div></div>)}</div></> : <><SectionHeading eyebrow="Customer marketplace" title="Shop the catalog" text="Compare approved listings from Argo sellers and add what you need to your cart." action={<button className="btn-primary" onClick={openCheckout} disabled={!cart.length}><PortalIcon name="bi-cart3" /> {canCheckout ? "Cart" : "Sign in to checkout"} {cart.length ? `(${cart.reduce((sum, item) => sum + item.quantity, 0)})` : ""}</button>} />{!canCheckout && <div className="mb-5 flex flex-col justify-between gap-3 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-900 sm:flex-row sm:items-center"><span>You are browsing publicly. A customer account is required only for checkout and order tracking.</span><Link className="shrink-0 font-semibold text-blue-700" to="/login?role=customer">Customer sign in</Link></div>}<div className="card mb-6 grid gap-3 p-3 sm:grid-cols-[1fr_190px]"><input aria-label="Search marketplace" className="input" placeholder="Search products or sellers..." value={query} onChange={(event) => setQuery(event.target.value)} /><select aria-label="Marketplace category" className="input" value={category} onChange={(event) => setCategory(event.target.value)}>{categoriesForFilter.map((item) => <option key={item}>{item}</option>)}</select></div><div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">{visible.map((product) => <ProductTile key={product.id} product={product} onAdd={addToCart} />)}</div>{!visible.length && <div className="card p-10 text-center text-sm text-slate-500">No products match this search.</div>}{checkoutOpen && <CheckoutPanel cart={cart} onClose={() => setCheckoutOpen(false)} onComplete={completeOrder} />}{confirmation && <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 px-4"><div className="w-full max-w-md rounded-2xl bg-white p-6 text-center shadow-2xl"><span className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-emerald-50 text-emerald-600"><PortalIcon name="bi-check-lg" /></span><h2 className="mt-4 text-xl font-bold text-slate-900">Order placed</h2><p className="mt-2 text-sm text-slate-500">Your payment is recorded as pending verification. You can track the order from My orders.</p><button className="btn-primary mt-6 w-full" onClick={() => setConfirmation(null)}>Continue shopping</button></div></div>}</>}</PortalShell>;
 }
 
 function SellerProductForm({ categoryOptions, onSaved }) {
@@ -178,7 +246,7 @@ function SellerPortal() {
   const [localProducts, setLocalProducts] = useState([]);
   const [localOrders, setLocalOrders] = useState([]);
   const productQuery = useMarketplaceList("seller/products", products.filter((item) => item.seller === "Northstar Gadgets"), { page_size: 50 }, normalizeProduct);
-  const categoryQuery = useMarketplaceList("categories", categories, { page_size: 100 }, (item) => ({ id: item.id || item.slug, name: item.name, status: item.status }));
+  const categoryQuery = useMarketplaceList("store/categories", categories, { page_size: 100 }, (item) => ({ id: item.id || item.slug, name: item.name, status: item.status }));
   const orderQuery = useQuery({ queryKey: ["portal", "seller-orders"], queryFn: () => client.get("/seller/orders").then((response) => response.data.items || []), enabled: isApiMode, retry: false });
   const commissionQuery = useQuery({ queryKey: ["portal", "seller-commission"], queryFn: () => client.get("/seller/commission").then((response) => response.data), enabled: isApiMode, retry: false });
   const catalog = [...localProducts, ...(productQuery.items.length ? productQuery.items : products.filter((item) => item.seller === "Northstar Gadgets").map(normalizeProduct))];
@@ -201,7 +269,38 @@ function AdminCommissionPage({ onToast }) {
 }
 
 export function PortalRoutes({ onToast }) {
-  return <Routes><Route path="/" element={<LandingPage />} /><Route path="/marketplace/orders" element={<RoleGate role="customer"><CustomerPortal /></RoleGate>} /><Route path="/marketplace/*" element={<CustomerPortal />} /><Route path="/seller/*" element={<RoleGate role="seller"><SellerPortal /></RoleGate>} /><Route path="/login" element={<AuthPage />} /><Route path="/signup" element={<AuthPage signup />} /></Routes>;
+  const customerOrders = <RoleGate role="customer"><CustomerPortal /></RoleGate>;
+  const sellerPortal = <RoleGate role="seller"><SellerPortal /></RoleGate>;
+  return (
+    <Routes>
+      <Route path="/" element={<LandingPage />} />
+      <Route path="/marketplace" element={<CustomerPortal />} />
+      <Route path="/marketplace/orders" element={customerOrders} />
+      <Route path="/seller" element={sellerPortal} />
+      <Route path="/seller/products" element={sellerPortal} />
+      <Route path="/seller/orders" element={sellerPortal} />
+      <Route path="/seller/commission" element={sellerPortal} />
+      <Route path="/login" element={<AuthPage />} />
+      <Route path="/signup" element={<AuthPage signup />} />
+      <Route path="*" element={<PublicNotFound />} />
+    </Routes>
+  );
+}
+
+function PublicNotFound() {
+  return (
+    <div className="min-h-[100dvh] bg-slate-50 px-4 py-16">
+      <div className="mx-auto max-w-lg rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm">
+        <PortalIcon name="bi-compass" />
+        <h1 className="mt-4 text-2xl font-bold text-slate-950">Page not found</h1>
+        <p className="mt-2 text-sm leading-6 text-slate-600">This page is not part of the public marketplace or an available account workspace.</p>
+        <div className="mt-6 flex flex-col justify-center gap-2 sm:flex-row">
+          <Link className="btn-primary" to="/">Go to landing page</Link>
+          <Link className="btn-secondary" to="/marketplace">Browse marketplace</Link>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export { AdminCommissionPage };

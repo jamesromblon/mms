@@ -31,9 +31,22 @@ test('renders the marketplace dashboard shell', () => {
 test('renders the public customer marketplace landing page', () => {
   renderApp('/')
 
-  expect(screen.getByRole('heading', { name: /Find useful products/ })).toBeInTheDocument()
+  expect(screen.getByRole('heading', { name: /Shop trusted local sellers/ })).toBeInTheDocument()
   expect(screen.getByRole('link', { name: /Browse marketplace/ })).toHaveAttribute('href', '/marketplace')
-  expect(screen.getByRole('link', { name: 'Proceed to login' })).toHaveAttribute('href', '/login')
+  expect(screen.getByRole('link', { name: 'Customer sign in' })).toHaveAttribute('href', '/login?role=customer')
+  expect(screen.getByRole('link', { name: /Admin sign in/ })).toHaveAttribute('href', '/login?role=admin')
+})
+
+test('keeps the catalog public but requires a customer session for checkout', async () => {
+  renderApp('/marketplace')
+
+  expect(screen.getByRole('heading', { name: 'Shop the catalog' })).toBeInTheDocument()
+  expect(screen.getByText(/browsing publicly/i)).toBeInTheDocument()
+  fireEvent.click(screen.getAllByRole('button', { name: /Add to cart/ })[0])
+  fireEvent.click(screen.getByRole('button', { name: /Sign in to checkout/ }))
+
+  expect(await screen.findByRole('heading', { name: 'Welcome back' })).toBeInTheDocument()
+  expect(window.location.search).toBe('?role=customer')
 })
 
 test('renders seller product workspace separately from admin catalog', () => {
@@ -129,6 +142,24 @@ test('opens category correction in the product edit form', () => {
   expect(modal.getByRole('option', { name: 'Electronics' })).toBeInTheDocument()
 })
 
+test('blocks a seller from opening customer order history', () => {
+  localStorage.setItem('argo_access_token', 'demo.seller')
+  localStorage.setItem('argo_portal_role', 'seller')
+  renderApp('/marketplace/orders')
+
+  expect(screen.getByRole('heading', { name: 'Sign in as a customer' })).toBeInTheDocument()
+})
+
+test('shows only the signed-in role workspace in the public header', () => {
+  localStorage.setItem('argo_access_token', 'demo.seller')
+  localStorage.setItem('argo_portal_role', 'seller')
+  renderApp('/')
+
+  expect(screen.getAllByRole('link', { name: 'Seller workspace' }).length).toBeGreaterThan(0)
+  expect(screen.queryByRole('link', { name: 'Admin dashboard' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('link', { name: 'My orders' })).not.toBeInTheDocument()
+})
+
 test('signs the admin out, clears the session, and returns to admin login', async () => {
   signInAsAdmin()
   renderApp('/products')
@@ -148,4 +179,11 @@ test('redirects unauthenticated admin routes to login', async () => {
   expect(await screen.findByRole('heading', { name: 'Welcome back' })).toBeInTheDocument()
   expect(window.location.pathname).toBe('/login')
   expect(window.location.search).toBe('?role=admin')
+})
+
+test('shows a public not-found page for unknown routes', () => {
+  renderApp('/not-a-real-page')
+
+  expect(screen.getByRole('heading', { name: 'Page not found' })).toBeInTheDocument()
+  expect(screen.getByRole('link', { name: 'Go to landing page' })).toHaveAttribute('href', '/')
 })

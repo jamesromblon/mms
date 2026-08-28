@@ -39,7 +39,7 @@ import {
   sellers,
 } from "./data";
 import { mutateMarketplace, useMarketplaceDashboard, useMarketplaceList } from "./api";
-import { clearAuthSession } from "./authSession";
+import { clearAuthSession, getAuthSession } from "./authSession";
 import { exportProductsWorkbook } from "./lib/productExport";
 import { AdminCommissionPage, PortalRoutes } from "./PortalApp";
 
@@ -69,6 +69,17 @@ const navItems = [
     badge: "3",
   },
   { label: "Commission", to: "/commission", icon: "bi-percent" },
+];
+
+const adminRouteRoots = [
+  "/dashboard",
+  "/products",
+  "/orders",
+  "/sellers",
+  "/reviews",
+  "/disputes",
+  "/commission",
+  "/settings",
 ];
 
 function Sidebar({ compact, onCompactToggle, open, onClose }) {
@@ -3832,11 +3843,10 @@ function App() {
     setToast(message);
     window.setTimeout(() => setToast(""), 3200);
   };
-  const isPortalRoute = location.pathname === "/" || location.pathname.startsWith("/marketplace") || location.pathname.startsWith("/seller") || location.pathname === "/login" || location.pathname === "/signup";
-  if (isPortalRoute) return <PortalRoutes onToast={notify} />;
-  const localToken = localStorage.getItem("argo_access_token");
-  const localRole = localStorage.getItem("argo_portal_role");
-  if (!localToken || localRole !== "admin") {
+  const isAdminRoute = adminRouteRoots.some((root) => location.pathname === root || location.pathname.startsWith(`${root}/`));
+  if (!isAdminRoute) return <PortalRoutes onToast={notify} />;
+  const session = getAuthSession();
+  if (!session.token || session.role !== "admin") {
     return <Navigate to="/login?role=admin" replace />;
   }
   return (
